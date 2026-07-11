@@ -1,0 +1,30 @@
+{
+  "name": "web-capture-server",
+  "version": "1.0.0",
+  "description": "High-quality web screen capture server with audio support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "web-recording",
+    "screen-capture",
+    "video-recording",
+    "puppeteer"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "puppeteer": "19.0.0",
+    "puppeteer-screen-recorder": "^3.0.6",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "axios": "^1.18.1",
+    "nodemon": "^3.0.2"
+  }
+}
