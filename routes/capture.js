@@ -54,35 +54,38 @@ router.post('/', async (req, res) => {
       mergeStart: null
     };
 
-    // Step 1: Capture website video
+    // Run capture and TTS in parallel (they're independent)
     metrics.captureStart = Date.now();
-    console.log(`🎬 Step 1/3: Capturing video...`);
-    let videoPath = await captureService.captureWebsite({ url, duration, quality, options });
+    metrics.ttsStart = Date.now();
 
-    let finalVideoPath = videoPath;
-    let audioPath = null;
+    console.log(`🎬 Step 1/2: Capturing video and generating TTS in parallel...`);
 
-    // Step 2: Generate TTS audio if script provided
-    if (script) {
-      metrics.ttsStart = Date.now();
-      console.log(`🎵 Step 2/3: Generating TTS audio...`);
+    const capturePromise = captureService.captureWebsite({ url, duration, quality, options });
+    const ttsPromise = script
+      ? ttsService.generateAndDownloadSpeech(script, language, voice, `tts-${uuidv4()}.mp3`)
+      : Promise.resolve(null);
 
-      const audioFilename = `tts-${uuidv4()}.mp3`;
-      audioPath = await ttsService.generateAndDownloadSpeech(script, language, voice, audioFilename);
+    const [captureResult, audioPath] = await Promise.all([capturePromise, ttsPromise]);
 
-      // Step 3: Merge video and audio
+    let finalVideoPath = captureResult.filePath;
+    let mergeDuration = 0;
+
+    // Merge only if TTS was generated
+    if (audioPath) {
       metrics.mergeStart = Date.now();
-      console.log(`🔧 Step 3/3: Merging video and audio...`);
+      console.log(`🎵 Step 2/2: Merging video and audio...`);
 
       const mergedFilename = `capture-${uuidv4()}.mp4`;
       const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
       const mergedPath = path.join(__dirname, '..', outputDir, mergedFilename);
 
-      finalVideoPath = await mergeService.mergeVideoAudio(videoPath, audioPath, mergedPath);
+      finalVideoPath = await mergeService.mergeVideoAudio(captureResult.filePath, audioPath, mergedPath);
+
+      mergeDuration = (Date.now() - metrics.mergeStart) / 1000;
 
       // Clean up temp files
       try {
-        fs.unlinkSync(videoPath);
+        fs.unlinkSync(captureResult.filePath);
         fs.unlinkSync(audioPath);
         console.log(`🗑️ Cleaned up temporary files`);
       } catch (cleanupErr) {
@@ -101,11 +104,12 @@ router.post('/', async (req, res) => {
       hasTTS: !!script,
       metrics: {
         total: totalDuration.toFixed(2),
-        capture: metrics.captureStart ? ((metrics.ttsStart || metrics.mergeStart || Date.now()) - metrics.captureStart) / 1000 : 0,
-        tts: metrics.ttsStart ? ((metrics.mergeStart || Date.now()) - metrics.ttsStart) / 1000 : 0,
-        merge: metrics.mergeStart ? (Date.now() - metrics.mergeStart) / 1000 : 0
+        capture: ((metrics.ttsStart || Date.now()) - metrics.captureStart) / 1000,
+        tts: script ? (audioPath ? (metrics.mergeStart ? (metrics.mergeStart - metrics.ttsStart) / 1000 : (Date.now() - metrics.ttsStart) / 1000) : 0) : 0,
+        merge: mergeDuration
       }
     };
+
     console.log(`📊 Performance:`, logEntry);
 
     res.json({

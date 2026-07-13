@@ -16,9 +16,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@andresaya/edge-tts": "^1.8.0",
     "axios": "^1.18.1",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "edge-tts-node": "^1.5.7",
     "express": "^4.18.2",
     "puppeteer": "19.0.0",
     "puppeteer-screen-recorder": "^3.0.6",
