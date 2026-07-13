@@ -57,6 +57,22 @@ function validateCaptureRequest(data) {
     errors.push({ message: 'FPS must be between 15 and 60' });
   }
 
+  // Validate TTS parameters (optional)
+  if (data.script !== undefined && typeof data.script !== 'string') {
+    errors.push({ message: 'Script must be a string' });
+  }
+
+  if (data.language && !['en-US', 'fr-FR', 'es-ES', 'de-DE', 'it-IT', 'pt-PT', 'ja-JP', 'zh-CN'].includes(data.language)) {
+    errors.push({ message: 'Language must be one of: en-US, fr-FR, es-ES, de-DE, it-IT, pt-PT, ja-JP, zh-CN' });
+  }
+
+  if (data.voice) {
+    const validVoices = ['male-foundation', 'female-foundation'];
+    if (!validVoices.includes(data.voice)) {
+      errors.push({ message: `Voice must be one of: ${validVoices.join(', ')}` });
+    }
+  }
+
   // Validate interactions array
   const interactions = data.interactions || [];
   if (interactions && !Array.isArray(interactions)) {
@@ -104,6 +120,9 @@ function validateCaptureRequest(data) {
       url: data.url,
       duration: data.duration,
       quality: quality,
+      script: data.script || null,
+      language: data.language || 'en-US',
+      voice: data.voice || 'male-foundation',
       interactions: interactions || [],
       options: {
         width: options.width || parseInt(process.env.DEFAULT_RESOLUTION_WIDTH || 1920),
