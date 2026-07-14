@@ -62,5 +62,5 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   logger.info(`Server running on http://localhost:${PORT}`);
   logger.info(`Video output directory: ${videoDir}`);
-  logger.info(`Ready to capture screens!`);
+  logger.info(`Queue system initialized and ready to capture screens!`);
 });

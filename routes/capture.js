@@ -1,46 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { validateCaptureRequest } = require('../utils/validation');
-const captureService = require('../services/captureService');
-const ttsService = require('../services/ttsService');
-const mergeService = require('../services/mergeService');
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
+const queueService = require('../services/queueService');
 
 /**
  * POST /api/capture
- * Capture a video of a website with optional TTS audio overlay
- *
- * Body:
- * {
- *   "url": "https://example.com",
- *   "duration": 30,
- *   "quality": "fast",
- *   "script": "Welcome to our website...",       // Optional - generates TTS
- *   "language": "en-US",                         // Optional - TTS language
- *   "voice": "male-foundation",                  // Optional - TTS voice
- *   "options": {
- *     "width": 1920,
- *     "height": 1080,
- *     "fps": 60
- *   }
- * }
+ * Enqueue a new capture job
  */
 router.post('/', async (req, res) => {
-  const startTime = Date.now();
-  const requestMetrics = {
-    captureStart: null,
-    captureEnd: null,
-    ttsStart: null,
-    ttsEnd: null,
-    mergeStart: null,
-    mergeEnd: null
-  };
-
   try {
-    // Validate request
+    // Validate request body
     const { error, value } = validateCaptureRequest(req.body);
 
     if (error) {
@@ -53,121 +25,83 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const { url, duration, quality, script, language, voice, options } = value;
+    // Queue the job
+    const jobInfo = queueService.createJob(value);
 
-    logger.info(`New capture request: ${url} for ${duration}s (quality=${quality}, tts=${!!script})`);
-    if (script) {
-      logger.info(`TTS parameters: language=${language}, voice=${voice}`);
-    }
-
-    // Run capture and TTS in parallel
-    requestMetrics.captureStart = Date.now();
-    requestMetrics.ttsStart = Date.now();
-
-    logger.info(`Step 1/2: Capturing video and generating TTS in parallel...`);
-
-    const capturePromise = captureService.captureWebsite({ url, duration, quality, options })
-      .then(result => {
-        requestMetrics.captureEnd = Date.now();
-        return result;
-      });
-
-    const ttsPromise = script
-      ? ttsService.generateAndDownloadSpeech(script, language, voice, `tts-${uuidv4()}.mp3`)
-          .then(result => {
-            requestMetrics.ttsEnd = Date.now();
-            return result;
-          })
-      : Promise.resolve(null);
-
-    const [captureResult, audioPath] = await Promise.all([capturePromise, ttsPromise]);
-
-    let finalVideoPath = captureResult.filePath;
-    let mergeDuration = 0;
-
-    // Merge only if TTS was generated
-    if (audioPath) {
-      requestMetrics.mergeStart = Date.now();
-      logger.info(`Step 2/2: Merging video and audio...`);
-
-      const mergedFilename = `capture-${uuidv4()}.mp4`;
-      const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
-      const mergedPath = path.join(__dirname, '..', outputDir, mergedFilename);
-
-      finalVideoPath = await mergeService.mergeVideoAudio(captureResult.filePath, audioPath, mergedPath);
-      requestMetrics.mergeEnd = Date.now();
-      mergeDuration = (requestMetrics.mergeEnd - requestMetrics.mergeStart) / 1000;
-
-      // Clean up temp files
-      try {
-        fs.unlinkSync(captureResult.filePath);
-        fs.unlinkSync(audioPath);
-        logger.info(`Cleaned up temporary files`);
-      } catch (cleanupErr) {
-        logger.warn(`Failed to cleanup temp files: ${cleanupErr.message}`);
-      }
-    }
-
-    const totalDuration = (Date.now() - startTime) / 1000;
-    const captureDuration = requestMetrics.captureEnd ? (requestMetrics.captureEnd - requestMetrics.captureStart) / 1000 : 0;
-    const ttsDuration = (script && requestMetrics.ttsEnd) ? (requestMetrics.ttsEnd - requestMetrics.ttsStart) / 1000 : 0;
-
-    // Gather process memory usage
-    const memUsage = process.memoryUsage();
-    const logEntry = {
-      url,
-      duration,
-      quality,
-      hasTTS: !!script,
-      metrics: {
-        total_duration: parseFloat(totalDuration.toFixed(2)),
-        capture_duration: parseFloat(captureDuration.toFixed(2)),
-        tts_duration: parseFloat(ttsDuration.toFixed(2)),
-        merge_duration: parseFloat(mergeDuration.toFixed(2)),
-        memory_usage: {
-          heapUsed: `${(memUsage.heapUsed / (1024 * 1024)).toFixed(2)} MB`,
-          heapTotal: `${(memUsage.heapTotal / (1024 * 1024)).toFixed(2)} MB`,
-          rss: `${(memUsage.rss / (1024 * 1024)).toFixed(2)} MB`
-        }
-      }
-    };
-
-    logger.info(`Capture request completed successfully: ${url}`, logEntry);
-
-    res.json({
+    res.status(202).json({
       success: true,
-      message: script ? 'Video captured with TTS audio' : 'Video captured successfully',
-      data: {
-        videoUrl: `/videos/${path.basename(finalVideoPath)}`,
-        duration: totalDuration,
-        hasTTS: !!script,
-        metrics: logEntry.metrics
-      }
+      message: 'Capture job enqueued successfully',
+      data: jobInfo
     });
 
   } catch (err) {
-    const totalDuration = (Date.now() - startTime) / 1000;
-    const memUsage = process.memoryUsage();
-    
-    logger.error(`Capture request failed: ${err.message}`, {
-      url: req.body.url,
-      duration: req.body.duration,
-      metrics: {
-        total_duration: parseFloat(totalDuration.toFixed(2)),
-        memory_usage: {
-          heapUsed: `${(memUsage.heapUsed / (1024 * 1024)).toFixed(2)} MB`,
-          rss: `${(memUsage.rss / (1024 * 1024)).toFixed(2)} MB`
-        }
-      },
-      stack: err.stack
-    });
-
+    logger.error(`Failed to enqueue capture job: ${err.message}`, { body: req.body, stack: err.stack });
     res.status(500).json({
       success: false,
-      error: 'Failed to capture video',
+      error: 'Failed to enqueue capture job',
       message: err.message
     });
   }
+});
+
+/**
+ * GET /api/capture/status/:jobId
+ * Check status of a queued job
+ */
+router.get('/status/:jobId', (req, res) => {
+  const { jobId } = req.params;
+  const job = queueService.getJob(jobId);
+
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Job not found',
+      message: `No capture job found with ID: ${jobId}`
+    });
+  }
+
+  res.json({
+    success: true,
+    data: job
+  });
+});
+
+/**
+ * GET /api/capture/download/:jobId
+ * Download the completed video file for a job
+ */
+router.get('/download/:jobId', (req, res) => {
+  const { jobId } = req.params;
+  const job = queueService.getJob(jobId);
+
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Job not found',
+      message: `No capture job found with ID: ${jobId}`
+    });
+  }
+
+  if (job.status !== 'completed') {
+    return res.status(400).json({
+      success: false,
+      error: 'Job not completed',
+      message: `Job is currently in status: ${job.status}. Download is only available for completed jobs.`
+    });
+  }
+
+  const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
+  const videoPath = path.join(__dirname, '..', outputDir, job.filename);
+
+  if (!fs.existsSync(videoPath)) {
+    return res.status(404).json({
+      success: false,
+      error: 'File not found',
+      message: 'The requested video file does not exist on disk'
+    });
+  }
+
+  res.download(videoPath, job.filename);
 });
 
 module.exports = router;

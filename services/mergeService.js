@@ -211,5 +211,6 @@ module.exports = {
   mergeVideoAudio,
   mergeWithMixing,
   getVideoDuration,
+  getMediaDuration: getVideoDuration, // Alias to clarify it supports audio files too
   trimAudio
 };
