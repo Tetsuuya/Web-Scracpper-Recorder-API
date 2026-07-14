@@ -26,7 +26,7 @@ router.post('/', async (req, res) => {
     }
 
     // Queue the job
-    const jobInfo = queueService.createJob(value);
+    const jobInfo = await queueService.createJob(value);
 
     res.status(202).json({
       success: true,
@@ -48,9 +48,9 @@ router.post('/', async (req, res) => {
  * GET /api/capture/status/:jobId
  * Check status of a queued job
  */
-router.get('/status/:jobId', (req, res) => {
+router.get('/status/:jobId', async (req, res) => {
   const { jobId } = req.params;
-  const job = queueService.getJob(jobId);
+  const job = await queueService.getJob(jobId);
 
   if (!job) {
     return res.status(404).json({
@@ -70,38 +70,51 @@ router.get('/status/:jobId', (req, res) => {
  * GET /api/capture/download/:jobId
  * Download the completed video file for a job
  */
-router.get('/download/:jobId', (req, res) => {
-  const { jobId } = req.params;
-  const job = queueService.getJob(jobId);
+router.get('/download/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const job = await queueService.getJob(jobId);
 
-  if (!job) {
-    return res.status(404).json({
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found',
+        message: `No capture job found with ID: ${jobId}`
+      });
+    }
+
+    if (job.status !== 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Job not completed',
+        message: `Job is currently in status: ${job.status}. Download is only available for completed jobs.`
+      });
+    }
+
+    // If it's a Cloudflare R2 public URL, redirect the client to download/stream directly from R2
+    if (job.videoUrl && job.videoUrl.startsWith('http')) {
+      return res.redirect(job.videoUrl);
+    }
+
+    const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
+    const videoPath = path.join(__dirname, '..', outputDir, job.filename);
+
+    if (!fs.existsSync(videoPath)) {
+      return res.status(404).json({
+        success: false,
+        error: 'File not found',
+        message: 'The requested video file does not exist on disk or has been cleaned up'
+      });
+    }
+
+    res.download(videoPath, job.filename);
+  } catch (err) {
+    logger.error(`Download failed: ${err.message}`, { stack: err.stack });
+    res.status(500).json({
       success: false,
-      error: 'Job not found',
-      message: `No capture job found with ID: ${jobId}`
+      error: 'Internal server error during file download'
     });
   }
-
-  if (job.status !== 'completed') {
-    return res.status(400).json({
-      success: false,
-      error: 'Job not completed',
-      message: `Job is currently in status: ${job.status}. Download is only available for completed jobs.`
-    });
-  }
-
-  const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
-  const videoPath = path.join(__dirname, '..', outputDir, job.filename);
-
-  if (!fs.existsSync(videoPath)) {
-    return res.status(404).json({
-      success: false,
-      error: 'File not found',
-      message: 'The requested video file does not exist on disk'
-    });
-  }
-
-  res.download(videoPath, job.filename);
 });
 
 module.exports = router;

@@ -17,7 +17,7 @@ function getReplicateClient() {
 }
 
 // Kokoro-82m model from Dubber/Backend
-const KOKORO_MODEL = 'alphanumericuser/kokoro-82m:89b6fa84e4fa2dd6bd3a96be3e1f12827a3516c9fda8fddbac7a0be131c9a6f5';
+const KOKORO_MODEL = 'jaaari/kokoro-82m:f559560eb822dc509045f3921a1921234918b91739db4bf3daab2169b71c7a13';
 
 // Map language to Kokoro voice codes on Replicate
 const VOICE_MAP = {

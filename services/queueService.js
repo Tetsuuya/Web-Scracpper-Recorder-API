@@ -5,6 +5,8 @@ const captureService = require('./captureService');
 const ttsService = require('./ttsService');
 const mergeService = require('./mergeService');
 const logger = require('../utils/logger');
+const db = require('../config/firebase');
+const r2 = require('../config/r2');
 
 // Queue internal state
 const queue = [];
@@ -12,11 +14,31 @@ const jobs = new Map();
 let isProcessing = false;
 
 /**
+ * Helper to update job state in both local map and Firestore
+ * @param {string} jobId 
+ * @param {Object} updates 
+ */
+async function updateJobState(jobId, updates) {
+  const localJob = jobs.get(jobId);
+  if (localJob) {
+    Object.assign(localJob, updates);
+  }
+  if (db) {
+    try {
+      await db.collection('jobs').doc(jobId).update(updates);
+      logger.info(`Job ${jobId} state updated in Firestore: ${JSON.stringify(updates)}`);
+    } catch (error) {
+      logger.error(`Failed to update job ${jobId} in Firestore: ${error.message}`);
+    }
+  }
+}
+
+/**
  * Create a new background capture job and add it to the queue
  * @param {Object} params - The request body parameters
- * @returns {Object} - The created job object
+ * @returns {Promise<Object>} - The created job object
  */
-function createJob(params) {
+async function createJob(params) {
   const jobId = uuidv4();
   
   const job = {
@@ -41,6 +63,16 @@ function createJob(params) {
   };
 
   jobs.set(jobId, job);
+
+  if (db) {
+    try {
+      await db.collection('jobs').doc(jobId).set(job);
+      logger.info(`Job ${jobId} saved to Firestore.`);
+    } catch (error) {
+      logger.error(`Failed to save job ${jobId} to Firestore: ${error.message}`);
+    }
+  }
+
   queue.push(jobId);
   logger.info(`Job ${jobId} queued (status: pending). Queue length: ${queue.length}`);
   
@@ -57,9 +89,32 @@ function createJob(params) {
 /**
  * Get job status and details
  * @param {string} jobId - The job ID
- * @returns {Object|null} - The job object or null if not found
+ * @returns {Promise<Object|null>} - The job object or null if not found
  */
-function getJob(jobId) {
+async function getJob(jobId) {
+  if (db) {
+    try {
+      const doc = await db.collection('jobs').doc(jobId).get();
+      if (doc.exists) {
+        const data = doc.data();
+        const convertTimestamp = (val) => val && typeof val.toDate === 'function' ? val.toDate() : val;
+        return {
+          jobId: data.id,
+          status: data.status,
+          error: data.error,
+          videoUrl: data.videoUrl,
+          filename: data.filename,
+          metrics: data.metrics,
+          created_at: convertTimestamp(data.created_at),
+          started_at: convertTimestamp(data.started_at),
+          completed_at: convertTimestamp(data.completed_at)
+        };
+      }
+    } catch (error) {
+      logger.error(`Failed to get job ${jobId} from Firestore: ${error.message}`);
+    }
+  }
+
   const job = jobs.get(jobId);
   if (!job) return null;
   
@@ -91,7 +146,18 @@ async function processQueue() {
 
   isProcessing = true;
   const jobId = queue.shift();
-  const job = jobs.get(jobId);
+  
+  let job = jobs.get(jobId);
+  if (!job && db) {
+    try {
+      const doc = await db.collection('jobs').doc(jobId).get();
+      if (doc.exists) {
+        job = doc.data();
+      }
+    } catch (e) {
+      logger.error(`Error loading job ${jobId} from Firestore: ${e.message}`);
+    }
+  }
 
   if (!job) {
     isProcessing = false;
@@ -100,8 +166,13 @@ async function processQueue() {
   }
 
   logger.info(`Starting execution of job ${jobId}`);
+  const startedAt = new Date();
+  await updateJobState(jobId, {
+    status: 'processing',
+    started_at: startedAt
+  });
   job.status = 'processing';
-  job.started_at = new Date();
+  job.started_at = startedAt;
 
   const startTime = Date.now();
   let audioPath = null;
@@ -174,9 +245,29 @@ async function processQueue() {
       metrics.merge_duration = parseFloat(((Date.now() - mergeStart) / 1000).toFixed(2));
       logger.info(`Job ${jobId}: Merge completed in ${metrics.merge_duration}s. File: ${finalVideoPath}`);
 
+      // Upload to R2 and get public URL
+      let videoUrl = `/videos/${mergedFilename}`;
+      let filename = mergedFilename;
+      
+      if (r2.s3Client) {
+        try {
+          logger.info(`Job ${jobId}: Uploading merged video to Cloudflare R2...`);
+          const r2Url = await r2.uploadFile(finalVideoPath, mergedFilename);
+          videoUrl = r2Url;
+          
+          // Delete the merged file from local storage to save space
+          if (fs.existsSync(finalVideoPath)) {
+            fs.unlinkSync(finalVideoPath);
+            logger.info(`Job ${jobId}: Deleted local merged video file after uploading to R2`);
+          }
+        } catch (uploadErr) {
+          logger.error(`Job ${jobId}: R2 upload failed, fallback to local file serving: ${uploadErr.message}`);
+        }
+      }
+
       // Save public URL
-      job.videoUrl = `/videos/${mergedFilename}`;
-      job.filename = mergedFilename;
+      job.videoUrl = videoUrl;
+      job.filename = filename;
 
       // Clean up temp files
       try {
@@ -189,8 +280,27 @@ async function processQueue() {
     } else {
       // No TTS: direct public URL of captured video
       const finalFilename = path.basename(tempVideoPath);
-      job.videoUrl = `/videos/${finalFilename}`;
-      job.filename = finalFilename;
+      let videoUrl = `/videos/${finalFilename}`;
+      let filename = finalFilename;
+
+      if (r2.s3Client) {
+        try {
+          logger.info(`Job ${jobId}: Uploading captured video to Cloudflare R2...`);
+          const r2Url = await r2.uploadFile(tempVideoPath, finalFilename);
+          videoUrl = r2Url;
+
+          // Delete local capture file
+          if (fs.existsSync(tempVideoPath)) {
+            fs.unlinkSync(tempVideoPath);
+            logger.info(`Job ${jobId}: Deleted local captured video file after uploading to R2`);
+          }
+        } catch (uploadErr) {
+          logger.error(`Job ${jobId}: R2 upload failed, fallback to local file serving: ${uploadErr.message}`);
+        }
+      }
+
+      job.videoUrl = videoUrl;
+      job.filename = filename;
       logger.info(`Job ${jobId} [Step 3/3]: No audio merge needed. Finished.`);
     }
 
@@ -209,6 +319,14 @@ async function processQueue() {
     job.metrics = metrics;
     job.completed_at = new Date();
     
+    await updateJobState(jobId, {
+      status: 'completed',
+      videoUrl: job.videoUrl,
+      filename: job.filename,
+      metrics: metrics,
+      completed_at: job.completed_at
+    });
+
     logger.info(`Job ${jobId} completed successfully in ${metrics.total_duration}s!`);
 
   } catch (error) {
@@ -218,6 +336,12 @@ async function processQueue() {
     job.status = 'failed';
     job.error = error.message;
     job.completed_at = new Date();
+
+    await updateJobState(jobId, {
+      status: 'failed',
+      error: error.message,
+      completed_at: job.completed_at
+    });
 
     // Clean up any remaining temp files on failure
     try {
