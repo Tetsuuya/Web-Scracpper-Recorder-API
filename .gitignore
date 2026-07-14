@@ -1,5 +1,7 @@
 node_modules/
 videos/
+audio/
+logs/
 .env
 *.log
 .DS_Store
