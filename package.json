@@ -25,7 +25,8 @@
     "puppeteer": "19.0.0",
     "puppeteer-screen-recorder": "^3.0.6",
     "replicate": "^1.4.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "axios": "^1.18.1",

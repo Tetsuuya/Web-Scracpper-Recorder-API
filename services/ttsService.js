@@ -19,6 +19,38 @@ function getReplicateClient() {
 // Kokoro-82m model from Dubber/Backend
 const KOKORO_MODEL = 'alphanumericuser/kokoro-82m:89b6fa84e4fa2dd6bd3a96be3e1f12827a3516c9fda8fddbac7a0be131c9a6f5';
 
+// Map language to Kokoro voice codes on Replicate
+const VOICE_MAP = {
+  'en-US': {
+    'male-foundation': 'am_adam',
+    'female-foundation': 'af_alloy'
+  },
+  'fr-FR': {
+    'male-foundation': 'ff_siwis',
+    'female-foundation': 'ff_siwis'
+  },
+  'es-ES': {
+    'male-foundation': 'em_alex',
+    'female-foundation': 'ef_dora'
+  },
+  'it-IT': {
+    'male-foundation': 'im_nicola',
+    'female-foundation': 'if_sara'
+  },
+  'pt-PT': {
+    'male-foundation': 'pm_alex',
+    'female-foundation': 'pf_dora'
+  },
+  'ja-JP': {
+    'male-foundation': 'jm_kumo',
+    'female-foundation': 'jf_alpha'
+  },
+  'zh-CN': {
+    'male-foundation': 'zm_yunjian',
+    'female-foundation': 'zf_xiaoxiao'
+  }
+};
+
 /**
  * Generate speech from text using Replicate Kokoro-82m
  * @param {string} text - The text to convert to speech
@@ -34,44 +66,8 @@ async function generateSpeech(text, language = 'en-US', voice = 'male-foundation
     throw new Error('Text is required for TTS generation');
   }
 
-  // Map language to Kokoro voice codes
-  const voiceMap = {
-    'en-US': {
-      'male-foundation': 'en_us_male_2',
-      'female-foundation': 'en_us_female_1'
-    },
-    'fr-FR': {
-      'male-foundation': 'fr_fr_male_1',
-      'female-foundation': 'fr_fr_female_1'
-    },
-    'es-ES': {
-      'male-foundation': 'es_es_male_1',
-      'female-foundation': 'es_es_female_1'
-    },
-    'de-DE': {
-      'male-foundation': 'de_de_male_1',
-      'female-foundation': 'de_de_female_1'
-    },
-    'it-IT': {
-      'male-foundation': 'it_it_male_1',
-      'female-foundation': 'it_it_female_1'
-    },
-    'pt-PT': {
-      'male-foundation': 'pt_pt_male_1',
-      'female-foundation': 'pt_pt_female_1'
-    },
-    'ja-JP': {
-      'male-foundation': 'jp_jp_male_1',
-      'female-foundation': 'jp_jp_female_1'
-    },
-    'zh-CN': {
-      'male-foundation': 'zh_cn_male_1',
-      'female-foundation': 'zh_cn_female_1'
-    }
-  };
-
-  // Default to en_US_male_2 if not found
-  const voiceCode = voiceMap[language]?.[voice] || 'en_us_male_2';
+  // Get Kokoro voice code
+  const voiceCode = VOICE_MAP[language]?.[voice] || 'am_adam';
 
   console.log(`🎵 Generating TTS audio...`);
   console.log(`   Language: ${language}`);
@@ -148,7 +144,7 @@ async function downloadAudio(audioUrl, outputPath) {
 
 /**
  * Generate and download TTS audio
- * Tries Replicate/Kokoro first, falls back to Edge TTS (free) on billing errors
+ * Tries Replicate/Kokoro first, falls back to Edge TTS (free) on errors or unsupported languages
  * @param {string} text - Text to convert to speech
  * @param {string} language - Language code
  * @param {string} voice - Voice option
@@ -162,8 +158,10 @@ async function generateAndDownloadSpeech(text, language = 'en-US', voice = 'male
     filename = `tts-${uuidv4()}.mp3`;
   }
 
-  // Try Replicate (Kokoro) first if token is available
-  if (process.env.REPLICATE_API_TOKEN) {
+  const isKokoroSupported = !!VOICE_MAP[language];
+
+  // Try Replicate (Kokoro) first if token is available and language is supported
+  if (process.env.REPLICATE_API_TOKEN && isKokoroSupported) {
     try {
       const audioUrl = await generateSpeech(text, language, voice);
       const outputDir = path.join(__dirname, '..', process.env.AUDIO_OUTPUT_DIR || './audio');
@@ -171,16 +169,10 @@ async function generateAndDownloadSpeech(text, language = 'en-US', voice = 'male
       await downloadAudio(audioUrl, outputPath);
       return outputPath;
     } catch (error) {
-      // Fallback to free TTS on billing/auth errors
-      const isBillingError = error.message.includes('402') || error.message.includes('Payment') || error.message.includes('credit');
-      const isAuthError = error.message.includes('401') || error.message.includes('Unauthenticated');
-
-      if (isBillingError || isAuthError) {
-        console.warn(`⚠️  Replicate unavailable (${isBillingError ? 'insufficient credits' : 'auth error'}), falling back to free Edge TTS...`);
-      } else {
-        throw error; // Re-throw unexpected errors
-      }
+      console.warn(`⚠️  Replicate TTS failed: ${error.message}. Falling back to free Edge TTS...`);
     }
+  } else if (!isKokoroSupported && process.env.REPLICATE_API_TOKEN) {
+    console.warn(`⚠️  Language '${language}' is not supported by Replicate Kokoro, falling back to free Edge TTS...`);
   } else {
     console.warn(`⚠️  No REPLICATE_API_TOKEN set, using free Edge TTS...`);
   }

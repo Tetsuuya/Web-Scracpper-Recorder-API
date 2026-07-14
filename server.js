@@ -4,6 +4,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const captureRouter = require('./routes/capture');
+const logger = require('./utils/logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,7 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 const videoDir = path.join(__dirname, process.env.VIDEO_OUTPUT_DIR || './videos');
 if (!fs.existsSync(videoDir)) {
   fs.mkdirSync(videoDir, { recursive: true });
-  console.log(`✅ Created video directory: ${videoDir}`);
+  logger.info(`Created video directory: ${videoDir}`);
 }
 
 // Serve static video files
@@ -50,7 +51,7 @@ app.get('/', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.message);
+  logger.error(`Express handler caught error: ${err.message}`, { stack: err.stack });
   res.status(err.status || 500).json({
     success: false,
     error: err.message || 'Internal server error'
@@ -59,7 +60,7 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📹 Video output directory: ${videoDir}`);
-  console.log(`📝 Ready to capture screens!`);
+  logger.info(`Server running on http://localhost:${PORT}`);
+  logger.info(`Video output directory: ${videoDir}`);
+  logger.info(`Ready to capture screens!`);
 });

@@ -7,6 +7,7 @@ const mergeService = require('../services/mergeService');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const logger = require('../utils/logger');
 
 /**
  * POST /api/capture
@@ -28,41 +29,55 @@ const { v4: uuidv4 } = require('uuid');
  * }
  */
 router.post('/', async (req, res) => {
+  const startTime = Date.now();
+  const requestMetrics = {
+    captureStart: null,
+    captureEnd: null,
+    ttsStart: null,
+    ttsEnd: null,
+    mergeStart: null,
+    mergeEnd: null
+  };
+
   try {
     // Validate request
     const { error, value } = validateCaptureRequest(req.body);
 
     if (error) {
+      const errorMessages = error.details.map(d => d.message);
+      logger.warn(`Validation failure on capture request: ${errorMessages.join(', ')}`, { body: req.body });
       return res.status(400).json({
         success: false,
         error: 'Validation error',
-        details: error.details.map(d => d.message)
+        details: errorMessages
       });
     }
 
     const { url, duration, quality, script, language, voice, options } = value;
 
-    console.log(`📹 New capture request: ${url} for ${duration}s`);
+    logger.info(`New capture request: ${url} for ${duration}s (quality=${quality}, tts=${!!script})`);
     if (script) {
-      console.log(`🎵 TTS enabled: language=${language}, voice=${voice}`);
+      logger.info(`TTS parameters: language=${language}, voice=${voice}`);
     }
 
-    const metrics = {
-      startTime: Date.now(),
-      captureStart: null,
-      ttsStart: null,
-      mergeStart: null
-    };
+    // Run capture and TTS in parallel
+    requestMetrics.captureStart = Date.now();
+    requestMetrics.ttsStart = Date.now();
 
-    // Run capture and TTS in parallel (they're independent)
-    metrics.captureStart = Date.now();
-    metrics.ttsStart = Date.now();
+    logger.info(`Step 1/2: Capturing video and generating TTS in parallel...`);
 
-    console.log(`🎬 Step 1/2: Capturing video and generating TTS in parallel...`);
+    const capturePromise = captureService.captureWebsite({ url, duration, quality, options })
+      .then(result => {
+        requestMetrics.captureEnd = Date.now();
+        return result;
+      });
 
-    const capturePromise = captureService.captureWebsite({ url, duration, quality, options });
     const ttsPromise = script
       ? ttsService.generateAndDownloadSpeech(script, language, voice, `tts-${uuidv4()}.mp3`)
+          .then(result => {
+            requestMetrics.ttsEnd = Date.now();
+            return result;
+          })
       : Promise.resolve(null);
 
     const [captureResult, audioPath] = await Promise.all([capturePromise, ttsPromise]);
@@ -72,45 +87,52 @@ router.post('/', async (req, res) => {
 
     // Merge only if TTS was generated
     if (audioPath) {
-      metrics.mergeStart = Date.now();
-      console.log(`🎵 Step 2/2: Merging video and audio...`);
+      requestMetrics.mergeStart = Date.now();
+      logger.info(`Step 2/2: Merging video and audio...`);
 
       const mergedFilename = `capture-${uuidv4()}.mp4`;
       const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
       const mergedPath = path.join(__dirname, '..', outputDir, mergedFilename);
 
       finalVideoPath = await mergeService.mergeVideoAudio(captureResult.filePath, audioPath, mergedPath);
-
-      mergeDuration = (Date.now() - metrics.mergeStart) / 1000;
+      requestMetrics.mergeEnd = Date.now();
+      mergeDuration = (requestMetrics.mergeEnd - requestMetrics.mergeStart) / 1000;
 
       // Clean up temp files
       try {
         fs.unlinkSync(captureResult.filePath);
         fs.unlinkSync(audioPath);
-        console.log(`🗑️ Cleaned up temporary files`);
+        logger.info(`Cleaned up temporary files`);
       } catch (cleanupErr) {
-        console.warn(`⚠️ Failed to cleanup temp files: ${cleanupErr.message}`);
+        logger.warn(`Failed to cleanup temp files: ${cleanupErr.message}`);
       }
     }
 
-    const totalDuration = (Date.now() - metrics.startTime) / 1000;
+    const totalDuration = (Date.now() - startTime) / 1000;
+    const captureDuration = requestMetrics.captureEnd ? (requestMetrics.captureEnd - requestMetrics.captureStart) / 1000 : 0;
+    const ttsDuration = (script && requestMetrics.ttsEnd) ? (requestMetrics.ttsEnd - requestMetrics.ttsStart) / 1000 : 0;
 
-    // Log performance metrics
+    // Gather process memory usage
+    const memUsage = process.memoryUsage();
     const logEntry = {
-      timestamp: new Date().toISOString(),
       url,
       duration,
       quality,
       hasTTS: !!script,
       metrics: {
-        total: totalDuration.toFixed(2),
-        capture: ((metrics.ttsStart || Date.now()) - metrics.captureStart) / 1000,
-        tts: script ? (audioPath ? (metrics.mergeStart ? (metrics.mergeStart - metrics.ttsStart) / 1000 : (Date.now() - metrics.ttsStart) / 1000) : 0) : 0,
-        merge: mergeDuration
+        total_duration: parseFloat(totalDuration.toFixed(2)),
+        capture_duration: parseFloat(captureDuration.toFixed(2)),
+        tts_duration: parseFloat(ttsDuration.toFixed(2)),
+        merge_duration: parseFloat(mergeDuration.toFixed(2)),
+        memory_usage: {
+          heapUsed: `${(memUsage.heapUsed / (1024 * 1024)).toFixed(2)} MB`,
+          heapTotal: `${(memUsage.heapTotal / (1024 * 1024)).toFixed(2)} MB`,
+          rss: `${(memUsage.rss / (1024 * 1024)).toFixed(2)} MB`
+        }
       }
     };
 
-    console.log(`📊 Performance:`, logEntry);
+    logger.info(`Capture request completed successfully: ${url}`, logEntry);
 
     res.json({
       success: true,
@@ -124,7 +146,22 @@ router.post('/', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('❌ Capture error:', err.message);
+    const totalDuration = (Date.now() - startTime) / 1000;
+    const memUsage = process.memoryUsage();
+    
+    logger.error(`Capture request failed: ${err.message}`, {
+      url: req.body.url,
+      duration: req.body.duration,
+      metrics: {
+        total_duration: parseFloat(totalDuration.toFixed(2)),
+        memory_usage: {
+          heapUsed: `${(memUsage.heapUsed / (1024 * 1024)).toFixed(2)} MB`,
+          rss: `${(memUsage.rss / (1024 * 1024)).toFixed(2)} MB`
+        }
+      },
+      stack: err.stack
+    });
+
     res.status(500).json({
       success: false,
       error: 'Failed to capture video',
