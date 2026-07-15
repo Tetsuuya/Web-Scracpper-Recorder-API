@@ -25,6 +25,10 @@ try {
           logger.info(`Private key ends with: "...${pk.slice(-40)}"`);
           logger.info(`Contains literal \\n: ${pk.includes('\\n')}, Contains real newline: ${pk.includes('\n')}`);
           
+          const newlineCount = (pk.match(/\n/g) || []).length;
+          const crCount = (pk.match(/\r/g) || []).length;
+          logger.info(`Newline count: ${newlineCount}, Carriage Return count: ${crCount}`);
+          
           // Print char codes for the first 35 characters to verify if backslashes or newlines exist
           const codes = [];
           for (let i = 0; i < Math.min(pk.length, 35); i++) {
