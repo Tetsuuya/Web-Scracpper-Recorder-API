@@ -234,19 +234,17 @@ curl -L https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurec
 
 ---
 
-## Performance Benchmarks (Azure — 2 CPU / 4 Gi — North Europe)
+## Performance Benchmarks (Azure — 4 CPU / 8 Gi — North Europe)
 
 | Step | Time |
 |------|------|
-| TTS generation (Replicate) | ~10s |
-| Website capture (high preset, 29s video) | ~90–180s |
-| Website capture (smooth preset, 29s video) | ~271s |
-| Audio/video merge (FFmpeg) | ~1s |
+| TTS generation (Replicate) | ~3s |
+| Website capture (high preset, 30s video) | ~110s |
+| Audio/video merge (FFmpeg) | ~0.6s |
 | Upload to Cloudflare R2 | ~4s |
-| **Total (high preset)** | **~2–3 minutes** |
-| **Total (smooth preset)** | **~5 minutes** |
+| **Total (high preset, 30s video)** | **~115s (~2 minutes)** |
 
-> Once GPU acceleration (Vast.ai) is integrated, capture and encoding times are expected to drop significantly.
+> Once GPU acceleration (Vast.ai) is integrated, capture and encoding times are expected to drop significantly further.
 
 ---
 
