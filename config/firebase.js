@@ -32,9 +32,13 @@ try {
     }
 
     if (serviceAccount) {
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
       admin.initializeApp({
         credential: admin.cert(serviceAccount)
       });
+      logger.info('Firebase Admin SDK initialized with service account.');
     } else {
       // Fallback: Try initializing with default credentials (useful for GCP environments or if configured via environment variables)
       admin.initializeApp();
