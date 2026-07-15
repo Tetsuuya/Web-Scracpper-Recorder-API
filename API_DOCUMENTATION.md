@@ -5,6 +5,11 @@
 https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io
 ```
 
+**UI Dashboard:**
+```
+https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/scrapper
+```
+
 > **Windows Users (PowerShell):** Use `curl.exe` instead of `curl`. For POST requests with a body, save your JSON to a file (e.g. `body.json`) and pass it with `@body.json` to avoid quote escaping issues.
 >
 > ```powershell
