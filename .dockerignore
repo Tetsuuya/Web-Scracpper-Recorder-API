@@ -1,0 +1,17 @@
+node_modules
+videos/*.mp4
+videos/*.webm
+audio/*.mp3
+logs/*.log
+.env
+.git
+.gitignore
+npm-debug.log
+Dockerfile
+.dockerignore
+plan.md
+PHASES.md
+walkthrough.md
+task.md
+implementation_plan.md
+README.md

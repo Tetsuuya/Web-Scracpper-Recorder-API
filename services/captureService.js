@@ -115,7 +115,7 @@ async function captureWebsite({ url, duration, quality, interactions, options })
 
   try {
     // Launch browser
-    browser = await puppeteer.launch({
+    const launchOptions = {
       headless: 'new',
       args: [
         '--no-sandbox',
@@ -124,7 +124,13 @@ async function captureWebsite({ url, duration, quality, interactions, options })
         '--disable-web-security',
         `--window-size=${qualityConfig.width},${qualityConfig.height}`
       ]
-    });
+    };
+
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+
+    browser = await puppeteer.launch(launchOptions);
 
     page = await browser.newPage();
 

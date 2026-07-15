@@ -241,3 +241,25 @@ After capture completes:
 - **FFmpeg** - Video encoding (via puppeteer-stream)
 
 All free and open source! 🎉
+
+## Deployment on Render
+
+This server is prepared for deployment to Render as a **Web Service** using the provided `Dockerfile`.
+
+### Steps to Deploy:
+
+1. **Push Code**: Ensure all changes (including the `Dockerfile` and `.dockerignore`) are pushed to your GitHub repository.
+2. **Create Web Service**:
+   - In Render Dashboard, click **New +** and select **Web Service**.
+   - Connect your GitHub repository.
+   - For **Runtime**, select **Docker** (Render will automatically detect the `Dockerfile`).
+3. **Configure Resource Tier**:
+   - **Important**: Puppeteer and Chromium require sufficient CPU and RAM for screen recording. It is recommended to use at least a tier with **1 GB to 2 GB of RAM** (e.g. Starter/Standard tier) to prevent out-of-memory crashes during video capture.
+4. **Environment Variables**:
+   Add the following environment variables in the Render settings:
+   - `PUPPETEER_EXECUTABLE_PATH`: `/usr/bin/chromium` (Tells Puppeteer to use the Chromium binary pre-installed in the Docker image).
+   - `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`: `true`
+   - `REPLICATE_API_TOKEN`: Your API token for Replicate (Kokoro TTS support).
+   - `PORT`: `3000` (Render handles external routing automatically).
+   - Storage/DB variables (if configured): R2 details (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT`, `R2_BUCKET_NAME`) and Firebase Admin details.
+
