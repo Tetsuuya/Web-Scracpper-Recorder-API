@@ -24,6 +24,14 @@ if (!fs.existsSync(videoDir)) {
 // Serve static video files
 app.use('/videos', express.static(videoDir));
 
+// Serve static frontend files
+app.use(express.static(path.join(__dirname, 'Public')));
+
+// UI Route
+app.get('/scrapper', (req, res) => {
+  res.sendFile(path.join(__dirname, 'Public', 'Scrapper.html'));
+});
+
 // Routes
 app.use('/api/capture', captureRouter);
 

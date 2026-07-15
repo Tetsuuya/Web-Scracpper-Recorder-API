@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Screen Capture Client</title>
+  <style>
+    :root {
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --danger: #ef4444;
+      --border: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 0.5rem;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 768px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 1.2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+      color: var(--text-muted);
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 0.625rem;
+      background-color: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .checkbox-group input {
+      width: 1.2rem;
+      height: 1.2rem;
+      cursor: pointer;
+    }
+
+    button.btn {
+      display: inline-block;
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    button.btn:hover {
+      background-color: var(--primary-hover);
+    }
+
+    button.btn:disabled {
+      background-color: #cbd5e1;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    /* Status Display */
+    .status-box {
+      padding: 1rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+      display: none;
+      font-size: 0.95rem;
+    }
+
+    .status-pending {
+      background-color: rgba(59, 130, 246, 0.1);
+      border: 1px solid var(--primary);
+      color: #1e40af;
+    }
+
+    .status-processing {
+      background-color: rgba(245, 158, 11, 0.1);
+      border: 1px solid #f59e0b;
+      color: #854d0e;
+    }
+
+    .status-completed {
+      background-color: rgba(16, 185, 129, 0.1);
+      border: 1px solid var(--success);
+      color: #065f46;
+    }
+
+    .status-failed {
+      background-color: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--danger);
+      color: #991b1b;
+    }
+
+    /* Video Player styles */
+    .video-container {
+      margin-top: 1rem;
+      display: none;
+    }
+
+    video {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background-color: #000;
+    }
+
+    .download-btn {
+      display: inline-block;
+      width: 100%;
+      text-align: center;
+      padding: 0.75rem 1rem;
+      background-color: var(--success);
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 600;
+      margin-top: 0.75rem;
+      transition: background-color 0.2s;
+    }
+
+    .download-btn:hover {
+      background-color: #059669;
+    }
+
+    /* History list */
+    .history-list {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .history-item:hover {
+      background-color: rgba(0, 0, 0, 0.03);
+    }
+
+    .history-item:last-child {
+      border-bottom: none;
+    }
+
+    .history-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .history-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .clear-history-btn {
+      font-size: 0.75rem;
+      color: var(--danger);
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    .clear-history-btn:hover {
+      text-decoration: underline;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      margin-top: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .metrics-item {
+      background-color: rgba(0, 0, 0, 0.02);
+      padding: 0.4rem;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .metrics-val {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Web Screen Capture</h1>
+      <p class="subtitle">Record high-quality web pages and sync with voice-overs</p>
+    </header>
+
+    <div class="main-grid">
+      <!-- Capture Request Form -->
+      <div>
+        <div class="card">
+          <div class="card-title">New Capture Request</div>
+          <form id="captureForm">
+            <div class="form-group">
+              <label for="url">Website URL</label>
+              <input type="text" id="url" name="url" placeholder="https://example.com" required>
+            </div>
+
+            <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div>
+                <label for="duration">Duration (seconds)</label>
+                <input type="number" id="duration" name="duration" min="1" max="300" value="10" required>
+              </div>
+              <div>
+                <label for="quality">Quality Preset</label>
+                <select id="quality" name="quality">
+                  <option value="superfast">Super Fast (720p24)</option>
+                  <option value="fast">Fast (720p30)</option>
+                  <option value="medium">Medium (1080p30)</option>
+                  <option value="high" selected>High (1080p60)</option>
+                  <option value="ultrahigh">Ultra High (1080p60, CRF15)</option>
+                  <option value="smooth">Smooth (1080p120)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="checkbox-group">
+              <input type="checkbox" id="autoScroll" name="autoScroll">
+              <label for="autoScroll" style="margin-bottom: 0; cursor: pointer;">Auto-scroll page during recording</label>
+            </div>
+
+            <div class="checkbox-group">
+              <input type="checkbox" id="enableTts" name="enableTts" onchange="toggleTtsFields()">
+              <label for="enableTts" style="margin-bottom: 0; cursor: pointer;">Add Text-to-Speech Voiceover</label>
+            </div>
+
+            <!-- TTS Fields (Hidden by default) -->
+            <div id="ttsContainer" style="display: none; border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 0.5rem;">
+              <div class="form-group">
+                <label for="script">Voiceover Script</label>
+                <textarea id="script" name="script" rows="3" placeholder="Enter text to speak. Recording will automatically extend to fit the voiceover length."></textarea>
+              </div>
+              <div class="form-group" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 1rem;">
+                <div>
+                  <label for="language">Language</label>
+                  <select id="language" name="language">
+                    <option value="en-US" selected>English (United States)</option>
+                    <option value="es-ES">Spanish (Spain)</option>
+                    <option value="fr-FR">French (France)</option>
+                    <option value="de-DE">German (Germany)</option>
+                    <option value="it-IT">Italian (Italy)</option>
+                    <option value="pt-PT">Portuguese (Portugal)</option>
+                    <option value="ja-JP">Japanese (Japan)</option>
+                    <option value="zh-CN">Chinese (China)</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="voice">Voice Gender</label>
+                  <select id="voice" name="voice">
+                    <option value="male-foundation">Male Accent</option>
+                    <option value="female-foundation" selected>Female Accent</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" id="submitBtn" class="btn">Start Screen Capture</button>
+          </form>
+
+          <!-- Status Indicator -->
+          <div id="statusBox" class="status-box">
+            <strong id="statusTitle">Status</strong>
+            <div id="statusMessage" style="margin-top: 0.25rem;">Idle</div>
+            <div id="statusDetails" style="font-size: 0.8rem; margin-top: 0.25rem; opacity: 0.85;"></div>
+            
+            <div id="metricsBox" class="metrics-grid" style="display: none;">
+              <div class="metrics-item">Total Capture: <span id="metricTotal" class="metrics-val">-</span></div>
+              <div class="metrics-item">Record Step: <span id="metricCapture" class="metrics-val">-</span></div>
+              <div class="metrics-item">TTS Step: <span id="metricTts" class="metrics-val">-</span></div>
+              <div class="metrics-item">Merge Step: <span id="metricMerge" class="metrics-val">-</span></div>
+            </div>
+          </div>
+
+          <!-- Video Player Output -->
+          <div id="videoContainer" class="video-container">
+            <video id="videoPlayer" controls></video>
+            <a id="downloadBtn" href="#" class="download-btn" target="_blank">Download Recording</a>
+          </div>
+        </div>
+
+        <!-- Raw API Response Card -->
+        <div class="card" id="responseCard" style="margin-top: 1.5rem;">
+          <div class="card-title">Last API Response</div>
+          <pre id="rawResponse" style="background-color: #f1f5f9; border: 1px solid var(--border); padding: 0.75rem; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; max-height: 400px; color: #0f172a; font-family: monospace; white-space: pre-wrap; word-break: break-all;">{}</pre>
+        </div>
+      </div>
+
+      <!-- Job History Sidebar -->
+      <div>
+        <div class="card" style="height: calc(100% - 1.5rem); min-height: 400px; display: flex; flex-direction: column;">
+          <div class="card-title">
+            <span>Recent Captures</span>
+            <button class="clear-history-btn" onclick="clearHistory()">Clear All</button>
+          </div>
+          <div id="historyList" class="history-list" style="flex: 1;">
+            <!-- History Items will be rendered here -->
+            <div style="color: var(--text-muted); text-align: center; margin-top: 3rem; font-size: 0.9rem;">
+              No recent recordings found.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let pollInterval = null;
+    let currentJobId = null;
+
+    // Load history on page load
+    window.addEventListener('load', () => {
+      renderHistory();
+    });
+
+    // Toggle TTS script fields
+    function toggleTtsFields() {
+      const enableTts = document.getElementById('enableTts').checked;
+      const ttsContainer = document.getElementById('ttsContainer');
+      ttsContainer.style.display = enableTts ? 'block' : 'none';
+      if (!enableTts) {
+        document.getElementById('script').value = '';
+      }
+    }
+
+    // Submit form handler
+    document.getElementById('captureForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById('submitBtn');
+      const url = document.getElementById('url').value.trim();
+      const duration = parseFloat(document.getElementById('duration').value);
+      const quality = document.getElementById('quality').value;
+      const autoScroll = document.getElementById('autoScroll').checked;
+      const enableTts = document.getElementById('enableTts').checked;
+      const script = document.getElementById('script').value.trim();
+      const language = document.getElementById('language').value;
+      const voice = document.getElementById('voice').value;
+
+      if (!url) return;
+
+      // Reset UI state
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Creating job...';
+      hideStatus();
+      hideVideo();
+      document.getElementById('rawResponse').innerText = '{\n  "info": "submitting request..."\n}';
+
+      const requestBody = {
+        url,
+        duration,
+        quality,
+        options: {
+          autoScroll
+        }
+      };
+
+      if (enableTts && script) {
+        requestBody.script = script;
+        requestBody.language = language;
+        requestBody.voice = voice;
+      }
+
+      try {
+        const response = await fetch('/api/capture', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        const result = await response.json();
+        updateRawResponse(result);
+
+        if (response.ok && result.success) {
+          const job = result.data;
+          currentJobId = job.jobId;
+          
+          showStatus('pending', 'Capture job enqueued successfully.', `Job ID: ${currentJobId}`);
+          
+          // Save a placeholder in history
+          saveToHistory({
+            id: currentJobId,
+            url: url,
+            status: 'pending',
+            created_at: new Date().toISOString()
+          });
+
+          // Start polling status
+          startPolling(currentJobId);
+        } else {
+          showStatus('failed', 'Error creating capture job', result.error || 'Server error occurred');
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Start Screen Capture';
+        }
+      } catch (err) {
+        showStatus('failed', 'Network connection failure', err.message);
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Start Screen Capture';
+      }
+    });
+
+    // Poll job status API
+    function startPolling(jobId) {
+      if (pollInterval) clearInterval(pollInterval);
+      
+      const submitBtn = document.getElementById('submitBtn');
+
+      pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/capture/status/${jobId}`);
+          const result = await response.json();
+          updateRawResponse(result);
+
+          if (response.ok && result.success) {
+            const job = result.data;
+            updateHistoryItem(jobId, job);
+
+            if (job.status === 'pending') {
+              showStatus('pending', 'Job is in line.', 'Waiting for other recordings to finish...');
+            } 
+            else if (job.status === 'processing') {
+              showStatus('processing', 'Recording browser screen...', 'Please wait, this will take about the recording duration.');
+            } 
+            else if (job.status === 'completed') {
+              clearInterval(pollInterval);
+              showStatus('completed', 'Screen capture complete!', 'Your video has been generated successfully.');
+              
+              // Load video in player
+              showVideo(job.videoUrl, jobId);
+              
+              // Show metrics if available
+              if (job.metrics) {
+                showMetrics(job.metrics);
+              }
+
+              submitBtn.disabled = false;
+              submitBtn.innerText = 'Start Screen Capture';
+            } 
+            else if (job.status === 'failed') {
+              clearInterval(pollInterval);
+              showStatus('failed', 'Capture Job Failed', job.error || 'Check server logs for details');
+              submitBtn.disabled = false;
+              submitBtn.innerText = 'Start Screen Capture';
+            }
+          } else {
+            clearInterval(pollInterval);
+            showStatus('failed', 'Failed to retrieve job status', result.message || 'Job ID might not exist');
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Start Screen Capture';
+          }
+        } catch (err) {
+          console.error('Error polling status:', err);
+        }
+      }, 2000);
+    }
+
+    // Helper functions for UI
+    function showStatus(type, title, message) {
+      const box = document.getElementById('statusBox');
+      box.className = `status-box status-${type}`;
+      box.style.display = 'block';
+      document.getElementById('statusTitle').innerText = title;
+      document.getElementById('statusMessage').innerText = message;
+    }
+
+    // Helper to hide status
+    function hideStatus() {
+      document.getElementById('statusBox').style.display = 'none';
+      document.getElementById('metricsBox').style.display = 'none';
+    }
+
+    function showVideo(videoUrl, jobId) {
+      const videoContainer = document.getElementById('videoContainer');
+      const player = document.getElementById('videoPlayer');
+      const downloadBtn = document.getElementById('downloadBtn');
+
+      // Check if URL is relative or absolute
+      const fullUrl = videoUrl.startsWith('http') ? videoUrl : window.location.origin + videoUrl;
+
+      player.src = fullUrl;
+      player.load();
+      videoContainer.style.display = 'block';
+
+      // Connect download route
+      downloadBtn.href = `/api/capture/download/${jobId}`;
+    }
+
+    function hideVideo() {
+      document.getElementById('videoContainer').style.display = 'none';
+      document.getElementById('videoPlayer').src = '';
+    }
+
+    function showMetrics(metrics) {
+      document.getElementById('metricsBox').style.display = 'grid';
+      document.getElementById('metricTotal').innerText = `${metrics.total_duration}s`;
+      document.getElementById('metricCapture').innerText = `${metrics.capture_duration}s`;
+      document.getElementById('metricTts').innerText = metrics.tts_duration ? `${metrics.tts_duration}s` : 'N/A';
+      document.getElementById('metricMerge').innerText = metrics.merge_duration ? `${metrics.merge_duration}s` : 'N/A';
+    }
+
+    function updateRawResponse(data) {
+      const responseCard = document.getElementById('responseCard');
+      const rawResponse = document.getElementById('rawResponse');
+      rawResponse.innerText = JSON.stringify(data, null, 2);
+      responseCard.style.display = 'block';
+    }
+
+    // LocalStorage History Helpers
+    function getHistory() {
+      try {
+        return JSON.parse(localStorage.getItem('capture_history') || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveToHistory(job) {
+      let history = getHistory();
+      // Remove any existing job with same ID
+      history = history.filter(item => item.id !== job.id);
+      history.unshift(job);
+      // Cap history at 20 items
+      if (history.length > 20) history.pop();
+      localStorage.setItem('capture_history', JSON.stringify(history));
+      renderHistory();
+    }
+
+    function updateHistoryItem(jobId, updatedJob) {
+      let history = getHistory();
+      const index = history.findIndex(item => item.id === jobId);
+      if (index !== -1) {
+        history[index] = {
+          ...history[index],
+          status: updatedJob.status,
+          videoUrl: updatedJob.videoUrl,
+          completed_at: updatedJob.completed_at,
+          error: updatedJob.error,
+          metrics: updatedJob.metrics
+        };
+        localStorage.setItem('capture_history', JSON.stringify(history));
+        renderHistory();
+      }
+    }
+
+    function clearHistory() {
+      if (confirm('Clear all recording history?')) {
+        localStorage.removeItem('capture_history');
+        renderHistory();
+      }
+    }
+
+    function renderHistory() {
+      const historyList = document.getElementById('historyList');
+      const history = getHistory();
+
+      if (history.length === 0) {
+        historyList.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 3rem; font-size: 0.9rem;">No recent recordings found.</div>`;
+        return;
+      }
+
+      historyList.innerHTML = history.map(item => {
+        let statusBadge = '';
+        let statusColor = 'var(--text-muted)';
+        
+        if (item.status === 'completed') {
+          statusBadge = '✓ Success';
+          statusColor = 'var(--success)';
+        } else if (item.status === 'failed') {
+          statusBadge = '✗ Failed';
+          statusColor = 'var(--danger)';
+        } else if (item.status === 'processing') {
+          statusBadge = '⚙ Processing';
+          statusColor = '#f59e0b';
+        } else {
+          statusBadge = '⌛ Pending';
+          statusColor = 'var(--primary)';
+        }
+
+        const dateStr = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(item.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+        return `
+          <div class="history-item" onclick="loadJobFromHistory('${item.id}')">
+            <div class="history-title" title="${item.url}">${item.url}</div>
+            <div class="history-meta">
+              <span>${dateStr}</span>
+              <span style="color: ${statusColor}; font-weight: 600;">${statusBadge}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function loadJobFromHistory(jobId) {
+      const history = getHistory();
+      const job = history.find(item => item.id === jobId);
+      if (!job) return;
+
+      currentJobId = jobId;
+      hideStatus();
+      hideVideo();
+      updateRawResponse(job);
+
+      if (job.status === 'completed') {
+        showStatus('completed', 'Screen capture complete!', 'Loaded from history.');
+        showVideo(job.videoUrl, jobId);
+        if (job.metrics) showMetrics(job.metrics);
+      } else if (job.status === 'failed') {
+        showStatus('failed', 'Capture Job Failed', job.error || 'Job failed. Check server logs.');
+      } else {
+        // Pending or processing - resume polling
+        showStatus(job.status, `Job is ${job.status}`, 'Resuming status tracking...');
+        startPolling(jobId);
+      }
+    }
+  </script>
+</body>
+</html>
