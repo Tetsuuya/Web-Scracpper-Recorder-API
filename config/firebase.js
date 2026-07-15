@@ -58,7 +58,6 @@ try {
 
       if (fs.existsSync(absolutePath)) {
         serviceAccount = require(absolutePath);
-        logger.info('Firebase Admin SDK initialized with service account file.');
       }
     }
 
