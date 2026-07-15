@@ -18,7 +18,9 @@ try {
         
         if (serviceAccount && serviceAccount.private_key) {
           const pk = serviceAccount.private_key;
-          logger.info(`Parsed private_key length: ${pk.length}`);
+          const crypto = require('crypto');
+          const pkHash = crypto.createHash('sha256').update(pk).digest('hex');
+          logger.info(`Parsed private_key length: ${pk.length}, SHA256: ${pkHash}`);
           logger.info(`Private key starts with: "${pk.slice(0, 40)}..."`);
           logger.info(`Private key ends with: "...${pk.slice(-40)}"`);
           logger.info(`Contains literal \\n: ${pk.includes('\\n')}, Contains real newline: ${pk.includes('\n')}`);
