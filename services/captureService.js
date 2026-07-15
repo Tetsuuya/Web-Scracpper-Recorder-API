@@ -130,7 +130,8 @@ async function captureWebsite({ url, duration, quality, interactions, options })
       if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
         launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
       } else {
-        console.log(`⚠️  PUPPETEER_EXECUTABLE_PATH not found on disk ("${process.env.PUPPETEER_EXECUTABLE_PATH}"). Falling back to bundled browser.`);
+        console.log(`⚠️  PUPPETEER_EXECUTABLE_PATH not found on disk ("${process.env.PUPPETEER_EXECUTABLE_PATH}"). Ignoring env variable.`);
+        delete process.env.PUPPETEER_EXECUTABLE_PATH;
       }
     }
 
