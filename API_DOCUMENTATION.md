@@ -30,7 +30,7 @@ https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainer
 **GET** `/health`
 
 ```bash
-curl https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecontainerapps.io/health
+curl https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/health
 ```
 
 **Response:**
@@ -100,7 +100,7 @@ Each interaction object supports:
 #### Basic capture (no voice-over):
 ```bash
 curl -X POST \
-  https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
+  https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com",
@@ -112,7 +112,7 @@ curl -X POST \
 #### Capture with voice-over script:
 ```bash
 curl -X POST \
-  https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
+  https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://v0-educut-ai-platform.vercel.app/demo/finance",
@@ -127,7 +127,7 @@ curl -X POST \
 #### Capture with auto-scroll:
 ```bash
 curl -X POST \
-  https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
+  https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com",
@@ -142,7 +142,7 @@ curl -X POST \
 #### Capture with custom interactions:
 ```bash
 curl -X POST \
-  https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
+  https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/api/capture \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://example.com",
@@ -177,7 +177,7 @@ curl -X POST \
 **GET** `/api/capture/status/:jobId`
 
 ```bash
-curl https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecontainerapps.io/api/capture/status/0cda22f3-8eaf-4888-bfc6-6c771aa3f9c1
+curl https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/api/capture/status/0cda22f3-8eaf-4888-bfc6-6c771aa3f9c1
 ```
 
 ### Job Status Values
@@ -216,7 +216,7 @@ curl https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecont
 **GET** `/api/capture/download/:jobId`
 
 ```bash
-curl -L https://web-scrapper-recorder-api.jollygross-a22ba7ee.northeurope.azurecontainerapps.io/api/capture/download/0cda22f3-8eaf-4888-bfc6-6c771aa3f9c1
+curl -L https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurecontainerapps.io/api/capture/download/0cda22f3-8eaf-4888-bfc6-6c771aa3f9c1
 ```
 
 > If the video is stored on Cloudflare R2, this endpoint redirects to the public R2 URL automatically.
