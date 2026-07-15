@@ -8,17 +8,33 @@ let db = null;
 
 try {
   if (admin.getApps().length === 0) {
-    const credentialsPath = process.env.FIREBASE_CREDENTIALS_PATH || './config/firebase-service-account.json';
-    const absolutePath = path.isAbsolute(credentialsPath)
-      ? credentialsPath
-      : path.join(__dirname, '..', credentialsPath);
+    let serviceAccount = null;
 
-    if (fs.existsSync(absolutePath)) {
-      const serviceAccount = require(absolutePath);
+    if (process.env.FIREBASE_CREDENTIALS) {
+      try {
+        serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+        logger.info('Firebase Admin SDK initialized with environment credentials JSON.');
+      } catch (err) {
+        logger.error(`Failed to parse FIREBASE_CREDENTIALS env variable: ${err.message}`);
+      }
+    }
+
+    if (!serviceAccount) {
+      const credentialsPath = process.env.FIREBASE_CREDENTIALS_PATH || './config/firebase-service-account.json';
+      const absolutePath = path.isAbsolute(credentialsPath)
+        ? credentialsPath
+        : path.join(__dirname, '..', credentialsPath);
+
+      if (fs.existsSync(absolutePath)) {
+        serviceAccount = require(absolutePath);
+        logger.info('Firebase Admin SDK initialized with service account file.');
+      }
+    }
+
+    if (serviceAccount) {
       admin.initializeApp({
         credential: admin.cert(serviceAccount)
       });
-      logger.info('Firebase Admin SDK initialized with service account.');
     } else {
       // Fallback: Try initializing with default credentials (useful for GCP environments or if configured via environment variables)
       admin.initializeApp();
