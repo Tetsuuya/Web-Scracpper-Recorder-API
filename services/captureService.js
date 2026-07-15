@@ -127,7 +127,11 @@ async function captureWebsite({ url, duration, quality, interactions, options })
     };
 
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-      launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      if (fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      } else {
+        console.log(`⚠️  PUPPETEER_EXECUTABLE_PATH not found on disk ("${process.env.PUPPETEER_EXECUTABLE_PATH}"). Falling back to bundled browser.`);
+      }
     }
 
     browser = await puppeteer.launch(launchOptions);
