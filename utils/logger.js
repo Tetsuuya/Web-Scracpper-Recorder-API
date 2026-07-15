@@ -55,15 +55,15 @@ const logger = winston.createLogger({
   ],
 });
 
-// If we're not in production, also log to the console with the colorized format
-if (process.env.NODE_ENV !== 'production') {
+// If we're not in production, or if we're running locally (not on Render), log to the console with colorized format
+if (process.env.NODE_ENV !== 'production' || !process.env.RENDER) {
   logger.add(
     new winston.transports.Console({
       format: consoleFormat,
     })
   );
 } else {
-  // In production, log json to console as well (best practice for containerized environments)
+  // On Render production, log json to console (best practice for containerized environments)
   logger.add(
     new winston.transports.Console({
       format: fileFormat,

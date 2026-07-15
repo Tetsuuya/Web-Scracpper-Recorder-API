@@ -71,4 +71,8 @@ app.listen(PORT, () => {
   logger.info(`Server running on http://localhost:${PORT}`);
   logger.info(`Video output directory: ${videoDir}`);
   logger.info(`Queue system initialized and ready to capture screens!`);
+  
+  if (!process.env.RENDER) {
+    console.log(`\n🚀 UI dashboard available at: http://localhost:${PORT}/scrapper\n`);
+  }
 });
