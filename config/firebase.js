@@ -44,7 +44,14 @@ try {
     }
 
     if (!serviceAccount) {
-      const credentialsPath = process.env.FIREBASE_CREDENTIALS_PATH || './config/firebase-service-account.json';
+      let credentialsPath = process.env.FIREBASE_CREDENTIALS_PATH || './config/firebase-service-account.json';
+      
+      // Auto-detect Render secrets mount path
+      const renderSecretPath = '/etc/secrets/firebase-service-account.json';
+      if (fs.existsSync(renderSecretPath)) {
+        credentialsPath = renderSecretPath;
+      }
+
       const absolutePath = path.isAbsolute(credentialsPath)
         ? credentialsPath
         : path.join(__dirname, '..', credentialsPath);
