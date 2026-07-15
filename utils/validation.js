@@ -109,9 +109,9 @@ function validateCaptureRequest(data) {
       voice: data.voice || 'male-foundation',
       interactions: interactions || [],
       options: {
-        width: options.width || parseInt(process.env.DEFAULT_RESOLUTION_WIDTH || 1920),
-        height: options.height || parseInt(process.env.DEFAULT_RESOLUTION_HEIGHT || 1080),
-        fps: options.fps || parseInt(process.env.DEFAULT_FPS || 60),
+        ...(options.width && { width: options.width }),
+        ...(options.height && { height: options.height }),
+        ...(options.fps && { fps: options.fps }),
         autoScroll: options.autoScroll !== undefined ? options.autoScroll : false
       }
     }
