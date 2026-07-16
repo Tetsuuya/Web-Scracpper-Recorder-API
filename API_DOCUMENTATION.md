@@ -318,78 +318,20 @@ curl -L https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurec
 
 ---
 
-## 6. Frontend Timeline Editor Guide (HTML/JS Integration)
+## 6. How to Use Decoupled Edit Mode (User Guide)
 
-When you receive the completed job status payload containing the generated tracks, your client application should render an editing interface to align audio segments onto the video timeline.
+Follow these steps to fine-tune and align voiceovers perfectly with your screen capture:
 
-### A. Rendering the Timeline UI Rows
-Iterate over the returned `ttsSegments` array to construct input rows:
-
-```javascript
-function renderTimelineEditor(job) {
-  const container = document.getElementById('timeline-container');
-  
-  // 1. Load the silent raw video in the main preview player
-  loadVideoPlayer(job.videoUrl);
-  
-  // 2. Render each segment with its specific input and a preview audio button
-  container.innerHTML = job.ttsSegments.map((seg, i) => `
-    <div class="timeline-row">
-      <span class="badge">Segment ${i + 1}</span>
-      
-      <!-- Timing start input -->
-      <label>Start: 
-        <input type="text" class="timeline-start" data-filename="${seg.filename}" value="${seg.timespamptStart}" />
-      </label>
-      
-      <!-- Text label -->
-      <span class="segment-text" title="${seg.TexttoTTS}">"${seg.TexttoTTS}"</span>
-      
-      <!-- Audio Preview Button -->
-      <button onclick="playAudio('${seg.audioUrl}')">🔊 Preview Audio</button>
-    </div>
-  `).join('');
-}
-
-function playAudio(url) {
-  const audio = new Audio(url);
-  audio.play();
-}
-```
-
-### B. Finalizing the Merge
-When the user clicks the "Finalize & Mix" button, query all timeline inputs to construct the payload for `/api/capture/merge`:
-
-```javascript
-async function finalizeDecoupledVideo(jobId) {
-  const inputs = document.querySelectorAll('.timeline-start');
-  const ttsSegments = Array.from(inputs).map(input => ({
-    filename: input.dataset.filename,
-    timespamptStart: input.value.trim()
-  }));
-
-  try {
-    const response = await fetch('/api/capture/merge', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ jobId, ttsSegments })
-    });
-    
-    const result = await response.json();
-    if (result.success) {
-      // Step completed! Load the final merged video in your player
-      loadVideoPlayer(result.data.videoUrl);
-      console.log('Final Merged Video URL:', result.data.videoUrl);
-    } else {
-      alert('Merge failed: ' + result.error);
-    }
-  } catch (err) {
-    console.error('Network error finalising merge:', err);
-  }
-}
-```
+1. **Enable Text-to-Speech**: Check the "Add Text-to-Speech Voiceover" checkbox on the dashboard.
+2. **Add Segments**: Split your voiceover script into separate sentences/segments, and input their relative start times (e.g. `00:00:00` for Segment 1, `00:00:07` for Segment 2, etc.).
+3. **Enable Edit Mode**: Check the "Enable Edit Mode" checkbox and click "Start Screen Capture".
+4. **Inspect Silent Output**: Once the browser capture completes, the dashboard will show a silent preview video and list individual voice clips below it.
+   * **Why is the video silent?** In Edit Mode, the video and voiceover segments are generated separately and are not merged yet. This allows you to listen to them independently and align them before mixing.
+5. **Fine-tune Timings (Previewing Video & Audio)**: 
+   * Play the silent preview video to note visual landmarks (e.g., *"The budget section scrolls in at exactly 00:00:08"*).
+   * Click **"🔊 Preview Audio"** next to each segment to hear the synthesized TTS voice output.
+   * Adjust the segment start timestamps to match the video landmarks you observed (e.g. set Segment 2 to start at `00:00:08`).
+6. **Merge & Finalize**: Click "Merge & Finalize Video". FFmpeg will mix the tracks instantly (~1s), loading the combined, high-quality audio video into the player!
 
 ---
 
