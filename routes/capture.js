@@ -1,10 +1,47 @@
 const express = require('express');
 const router = express.Router();
-const { validateCaptureRequest } = require('../utils/validation');
+const { validateCaptureRequest, validateMergeRequest } = require('../utils/validation');
 const path = require('path');
 const fs = require('fs');
 const logger = require('../utils/logger');
 const queueService = require('../services/queueService');
+
+/**
+ * POST /api/capture/merge
+ * Fast merge for decoupled jobs
+ */
+router.post('/merge', async (req, res) => {
+  try {
+    const { error, value } = validateMergeRequest(req.body);
+
+    if (error) {
+      const errorMessages = error.details.map(d => d.message);
+      logger.warn(`Validation failure on merge request: ${errorMessages.join(', ')}`, { body: req.body });
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        details: errorMessages
+      });
+    }
+
+    logger.info(`Starting merge for job: ${value.jobId}`);
+    const mergeResult = await queueService.mergeJob(value.jobId, value.ttsSegments);
+
+    res.json({
+      success: true,
+      message: 'Video and audio segments merged successfully',
+      data: mergeResult
+    });
+
+  } catch (err) {
+    logger.error(`Merge request failed: ${err.message}`, { body: req.body, stack: err.stack });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to merge video and audio segments',
+      message: err.message
+    });
+  }
+});
 
 /**
  * POST /api/capture

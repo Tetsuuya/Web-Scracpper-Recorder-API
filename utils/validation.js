@@ -57,9 +57,24 @@ function validateCaptureRequest(data) {
     errors.push({ message: 'FPS must be between 15 and 60' });
   }
 
+  // Validate ttsSegments array
+  const ttsSegments = data.ttsSegments || [];
+  if (data.ttsSegments && !Array.isArray(data.ttsSegments)) {
+    errors.push({ message: 'ttsSegments must be an array' });
+  } else {
+    ttsSegments.forEach((segment, index) => {
+      if (segment.timespamptStart === undefined || segment.timespamptStart === null) {
+        errors.push({ message: `ttsSegments[${index}]: timespamptStart is required` });
+      }
+      if (!segment.TexttoTTS) {
+        errors.push({ message: `ttsSegments[${index}]: TexttoTTS is required` });
+      }
+    });
+  }
+
   // Validate interactions array
   const interactions = data.interactions || [];
-  if (interactions && !Array.isArray(interactions)) {
+  if (data.interactions && !Array.isArray(data.interactions)) {
     errors.push({ message: 'Interactions must be an array' });
   }
 
@@ -105,6 +120,7 @@ function validateCaptureRequest(data) {
       duration: data.duration,
       quality: quality,
       script: data.script || null,
+      ttsSegments: data.ttsSegments || [],
       language: data.language || 'en-US',
       voice: data.voice || 'male-foundation',
       interactions: interactions || [],
@@ -112,12 +128,57 @@ function validateCaptureRequest(data) {
         ...(options.width && { width: options.width }),
         ...(options.height && { height: options.height }),
         ...(options.fps && { fps: options.fps }),
-        autoScroll: options.autoScroll !== undefined ? options.autoScroll : false
+        autoScroll: options.autoScroll !== undefined ? options.autoScroll : false,
+        editMode: options.editMode !== undefined ? !!options.editMode : false
       }
     }
   };
 }
 
+/**
+ * Validate final merge request input
+ * @param {Object} data - Request body
+ * @returns {Object} - { error, value }
+ */
+function validateMergeRequest(data) {
+  const errors = [];
+
+  if (!data.jobId) {
+    errors.push({ message: 'jobId is required' });
+  }
+
+  if (!data.ttsSegments) {
+    errors.push({ message: 'ttsSegments is required' });
+  } else if (!Array.isArray(data.ttsSegments)) {
+    errors.push({ message: 'ttsSegments must be an array' });
+  } else {
+    data.ttsSegments.forEach((segment, index) => {
+      if (!segment.filename) {
+        errors.push({ message: `ttsSegments[${index}]: filename is required` });
+      }
+      if (segment.timespamptStart === undefined || segment.timespamptStart === null) {
+        errors.push({ message: `ttsSegments[${index}]: timespamptStart is required` });
+      }
+    });
+  }
+
+  if (errors.length > 0) {
+    return { 
+      error: { details: errors }, 
+      value: null 
+    };
+  }
+
+  return {
+    error: null,
+    value: {
+      jobId: data.jobId,
+      ttsSegments: data.ttsSegments
+    }
+  };
+}
+
 module.exports = {
-  validateCaptureRequest
+  validateCaptureRequest,
+  validateMergeRequest
 };

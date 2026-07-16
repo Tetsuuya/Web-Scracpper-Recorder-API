@@ -300,7 +300,7 @@
 
     <div class="main-grid">
       <!-- Capture Request Form -->
-      <div>
+      <div style="min-width: 0;">
         <div class="card">
           <div class="card-title">New Capture Request</div>
           <form id="captureForm">
@@ -337,12 +337,13 @@
               <label for="enableTts" style="margin-bottom: 0; cursor: pointer;">Add Text-to-Speech Voiceover</label>
             </div>
 
+            <div class="checkbox-group" id="editModeGroup" style="display: none;">
+              <input type="checkbox" id="editMode" name="editMode">
+              <label for="editMode" style="margin-bottom: 0; cursor: pointer;"><strong>Enable Edit Mode</strong> (Decoupled preview & timeline timing adjustment)</label>
+            </div>
+
             <!-- TTS Fields (Hidden by default) -->
             <div id="ttsContainer" style="display: none; border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 0.5rem;">
-              <div class="form-group">
-                <label for="script">Voiceover Script</label>
-                <textarea id="script" name="script" rows="3" placeholder="Enter text to speak. Recording will automatically extend to fit the voiceover length."></textarea>
-              </div>
               <div class="form-group" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 1rem;">
                 <div>
                   <label for="language">Language</label>
@@ -365,6 +366,16 @@
                   </select>
                 </div>
               </div>
+
+              <div class="form-group">
+                <label style="font-weight: 600; display: flex; justify-content: space-between; align-items: center; color: var(--text-muted);">
+                  <span>Voiceover Segments</span>
+                  <button type="button" class="btn" style="width: auto; padding: 0.25rem 0.6rem; font-size: 0.75rem; background-color: var(--primary);" onclick="addTtsSegmentRow()">+ Add Segment</button>
+                </label>
+                <div id="segmentsListContainer" style="margin-top: 0.5rem;">
+                  <!-- Dynamic Segment Rows will be inserted here -->
+                </div>
+              </div>
             </div>
 
             <button type="submit" id="submitBtn" class="btn">Start Screen Capture</button>
@@ -384,6 +395,20 @@
             </div>
           </div>
 
+          <!-- Timeline Editor (Decoupled Edit Mode) -->
+          <div id="timelineEditor" style="display: none; border: 1px dashed var(--primary); background-color: rgba(59, 130, 246, 0.03); margin-top: 1.5rem; padding: 1.2rem; border-radius: 8px;">
+            <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 0.75rem; color: var(--primary); display: flex; justify-content: space-between; align-items: center;">
+              <span>🎛️ Voiceover Alignment Timeline</span>
+              <span style="font-size: 0.75rem; font-weight: normal; color: var(--text-muted);">Adjust timings, preview audio, then click final merge</span>
+            </div>
+            <div id="timelineSegments" style="margin-bottom: 1rem;">
+              <!-- Individual segments dynamically loaded -->
+            </div>
+            <button type="button" id="finalizeBtn" class="btn" style="background-color: var(--success);" onclick="finalizeDecoupledMerge()">
+              Merge & Finalize Video
+            </button>
+          </div>
+
           <!-- Video Player Output -->
           <div id="videoContainer" class="video-container">
             <video id="videoPlayer" controls></video>
@@ -399,7 +424,7 @@
       </div>
 
       <!-- Job History Sidebar -->
-      <div>
+      <div style="min-width: 0;">
         <div class="card" style="height: calc(100% - 1.5rem); min-height: 400px; display: flex; flex-direction: column;">
           <div class="card-title">
             <span>Recent Captures</span>
@@ -425,14 +450,57 @@
       renderHistory();
     });
 
+    let currentEditJob = null;
+
     // Toggle TTS script fields
     function toggleTtsFields() {
       const enableTts = document.getElementById('enableTts').checked;
       const ttsContainer = document.getElementById('ttsContainer');
+      const editModeGroup = document.getElementById('editModeGroup');
+      
       ttsContainer.style.display = enableTts ? 'block' : 'none';
-      if (!enableTts) {
-        document.getElementById('script').value = '';
+      editModeGroup.style.display = enableTts ? 'flex' : 'none';
+      
+      if (enableTts) {
+        const container = document.getElementById('segmentsListContainer');
+        if (container.children.length === 0) {
+          addTtsSegmentRow("00:00:00", "Welcome to Finance Flow, your trusted financial management platform designed to make handling your finances simple and efficient.");
+          addTtsSegmentRow("00:00:07", "Whether you are tracking your income and expenses, managing budgets, monitoring transactions, or analyzing your financial progress, Finance Flow provides the tools you need in one convenient place.");
+          addTtsSegmentRow("00:00:16", "Our goal is to help you stay organized, make informed financial decisions, and achieve your financial goals with confidence through a secure, user-friendly, and reliable experience.");
+        }
+      } else {
+        document.getElementById('segmentsListContainer').innerHTML = '';
+        document.getElementById('editMode').checked = false;
       }
+    }
+
+    // Dynamic row management for segments
+    function addTtsSegmentRow(startTime = "00:00:00", text = "") {
+      const container = document.getElementById('segmentsListContainer');
+      const rowId = `seg-row-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      
+      const rowHtml = `
+        <div class="segment-row" id="${rowId}" style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: flex-start; background-color: rgba(0, 0, 0, 0.01); padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border);">
+          <div style="width: 100px; flex-shrink: 0;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.25rem; font-weight: 600;">Start Time</label>
+            <input type="text" class="seg-start" value="${startTime}" placeholder="00:00:00" style="padding: 0.4rem; font-size: 0.85rem;" required>
+          </div>
+          <div style="flex-grow: 1;">
+            <label style="font-size: 0.75rem; margin-bottom: 0.25rem; font-weight: 600;">Voiceover Text</label>
+            <textarea class="seg-text" rows="2" style="padding: 0.4rem; font-size: 0.85rem;" placeholder="Enter voice text..." required>${text}</textarea>
+          </div>
+          <button type="button" class="btn" style="width: auto; padding: 0.4rem; background-color: var(--danger); margin-top: 1.25rem;" onclick="removeTtsSegmentRow('${rowId}')">
+            <svg style="width: 16px; height: 16px; fill: white;" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+      `;
+      
+      container.insertAdjacentHTML('beforeend', rowHtml);
+    }
+
+    function removeTtsSegmentRow(rowId) {
+      const row = document.getElementById(rowId);
+      if (row) row.remove();
     }
 
     // Submit form handler
@@ -445,7 +513,7 @@
       const quality = document.getElementById('quality').value;
       const autoScroll = document.getElementById('autoScroll').checked;
       const enableTts = document.getElementById('enableTts').checked;
-      const script = document.getElementById('script').value.trim();
+      const editMode = document.getElementById('editMode').checked;
       const language = document.getElementById('language').value;
       const voice = document.getElementById('voice').value;
 
@@ -456,6 +524,7 @@
       submitBtn.innerText = 'Creating job...';
       hideStatus();
       hideVideo();
+      document.getElementById('timelineEditor').style.display = 'none';
       document.getElementById('rawResponse').innerText = '{\n  "info": "submitting request..."\n}';
 
       const requestBody = {
@@ -463,14 +532,22 @@
         duration,
         quality,
         options: {
-          autoScroll
+          autoScroll,
+          editMode: enableTts ? editMode : false
         }
       };
 
-      if (enableTts && script) {
-        requestBody.script = script;
+      if (enableTts) {
         requestBody.language = language;
         requestBody.voice = voice;
+        
+        const segmentRows = document.querySelectorAll('.segment-row');
+        requestBody.ttsSegments = Array.from(segmentRows).map(row => {
+          return {
+            timespamptStart: row.querySelector('.seg-start').value.trim(),
+            TexttoTTS: row.querySelector('.seg-text').value.trim()
+          };
+        });
       }
 
       try {
@@ -537,10 +614,14 @@
             } 
             else if (job.status === 'completed') {
               clearInterval(pollInterval);
-              showStatus('completed', 'Screen capture complete!', 'Your video has been generated successfully.');
               
-              // Load video in player
-              showVideo(job.videoUrl, jobId);
+              if (job.ttsSegments && job.ttsSegments.length > 0 && !job.isMerged) {
+                showStatus('completed', 'Recording and TTS ready!', 'Align voiceovers in the timeline below, then click Finalize.');
+                showTimelineEditor(job);
+              } else {
+                showStatus('completed', 'Screen capture complete!', 'Your video has been generated successfully.');
+                showVideo(job.videoUrl, jobId);
+              }
               
               // Show metrics if available
               if (job.metrics) {
@@ -712,11 +793,17 @@
       currentJobId = jobId;
       hideStatus();
       hideVideo();
+      document.getElementById('timelineEditor').style.display = 'none';
       updateRawResponse(job);
 
       if (job.status === 'completed') {
-        showStatus('completed', 'Screen capture complete!', 'Loaded from history.');
-        showVideo(job.videoUrl, jobId);
+        if (job.ttsSegments && job.ttsSegments.length > 0 && !job.isMerged) {
+          showStatus('completed', 'Recording and TTS ready!', 'Align voiceovers in the timeline below, then click Finalize.');
+          showTimelineEditor(job);
+        } else {
+          showStatus('completed', 'Screen capture complete!', 'Loaded from history.');
+          showVideo(job.videoUrl, jobId);
+        }
         if (job.metrics) showMetrics(job.metrics);
       } else if (job.status === 'failed') {
         showStatus('failed', 'Capture Job Failed', job.error || 'Job failed. Check server logs.');
@@ -724,6 +811,97 @@
         // Pending or processing - resume polling
         showStatus(job.status, `Job is ${job.status}`, 'Resuming status tracking...');
         startPolling(jobId);
+      }
+    }
+
+    // Timeline Alignment Editor Helpers
+    function showTimelineEditor(job) {
+      currentEditJob = job;
+      const editor = document.getElementById('timelineEditor');
+      const segmentsDiv = document.getElementById('timelineSegments');
+      
+      // Load silent video in player for user preview reference
+      showVideo(job.videoUrl, job.jobId || job.id);
+      
+      segmentsDiv.innerHTML = job.ttsSegments.map((seg, index) => {
+        const audioUrl = seg.audioUrl.startsWith('http') ? seg.audioUrl : window.location.origin + seg.audioUrl;
+        return `
+          <div class="timeline-row" style="display: flex; gap: 0.75rem; align-items: center; background-color: white; border: 1px solid var(--border); padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
+            <div style="font-weight: 600; font-size: 0.8rem; background-color: var(--border); padding: 0.25rem 0.5rem; border-radius: 4px;">
+              Seg ${index + 1}
+            </div>
+            <div style="width: 130px; flex-shrink: 0; display: flex; align-items: center; gap: 0.25rem;">
+              <span style="font-size: 0.75rem; font-weight: 500; color: var(--text-muted);">Start:</span>
+              <input type="text" class="timeline-start" data-filename="${seg.filename}" value="${seg.timespamptStart}" style="padding: 0.3rem; font-size: 0.85rem; text-align: center;" placeholder="00:00:00">
+            </div>
+            <div style="flex-grow: 1; min-width: 0; font-size: 0.85rem; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${seg.TexttoTTS}">
+              "${seg.TexttoTTS}"
+            </div>
+            <button type="button" class="btn" style="width: auto; padding: 0.3rem 0.6rem; font-size: 0.75rem; background-color: #64748b;" onclick="playAudioPreview('${audioUrl}')">
+              🔊 Preview Audio
+            </button>
+          </div>
+        `;
+      }).join('');
+      
+      editor.style.display = 'block';
+    }
+
+    function playAudioPreview(url) {
+      const audio = new Audio(url);
+      audio.play();
+    }
+
+    async function finalizeDecoupledMerge() {
+      if (!currentEditJob) return;
+      
+      const finalizeBtn = document.getElementById('finalizeBtn');
+      const originalText = finalizeBtn.innerText;
+      finalizeBtn.disabled = true;
+      finalizeBtn.innerText = 'Merging tracks on server...';
+      
+      const jobId = currentEditJob.jobId || currentEditJob.id;
+      const rows = document.querySelectorAll('.timeline-start');
+      const ttsSegments = Array.from(rows).map(input => ({
+        filename: input.dataset.filename,
+        timespamptStart: input.value.trim()
+      }));
+      
+      try {
+        const response = await fetch('/api/capture/merge', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            jobId,
+            ttsSegments
+          })
+        });
+        
+        const result = await response.json();
+        updateRawResponse(result);
+        
+        if (response.ok && result.success) {
+          showStatus('completed', 'Merge completed successfully!', 'Your final video is ready.');
+          document.getElementById('timelineEditor').style.display = 'none';
+          
+          // Show the final merged video
+          showVideo(result.data.videoUrl, jobId);
+          
+          // Update item in local history so it is saved as success merged video
+          updateHistoryItem(jobId, {
+            status: 'completed',
+            videoUrl: result.data.videoUrl
+          });
+        } else {
+          alert('Error during merge: ' + (result.error || 'Server error'));
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      } finally {
+        finalizeBtn.disabled = false;
+        finalizeBtn.innerText = originalText;
       }
     }
   </script>

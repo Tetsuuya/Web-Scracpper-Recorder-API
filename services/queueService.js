@@ -1,12 +1,45 @@
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const captureService = require('./captureService');
 const ttsService = require('./ttsService');
 const mergeService = require('./mergeService');
+const { parseTimestamp } = require('./mergeService');
 const logger = require('../utils/logger');
 const db = require('../config/firebase');
 const r2 = require('../config/r2');
+
+/**
+ * Downloads a file if it is an HTTP link and not present locally
+ */
+async function ensureLocalFile(urlOrPath, localPath) {
+  if (fs.existsSync(localPath)) {
+    return localPath;
+  }
+  if (urlOrPath && urlOrPath.startsWith('http')) {
+    logger.info(`Downloading file from R2: ${urlOrPath} -> ${localPath}`);
+    const response = await axios({
+      method: 'GET',
+      url: urlOrPath,
+      responseType: 'stream'
+    });
+    
+    // Ensure parent directory exists
+    const dir = path.dirname(localPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const writer = fs.createWriteStream(localPath);
+    response.data.pipe(writer);
+    return new Promise((resolve, reject) => {
+      writer.on('finish', () => resolve(localPath));
+      writer.on('error', reject);
+    });
+  }
+  throw new Error(`Local file not found and URL is invalid: ${urlOrPath}`);
+}
 
 // Queue internal state
 const queue = [];
@@ -49,6 +82,7 @@ async function createJob(params) {
       duration: params.duration,
       quality: params.quality || 'high',
       script: params.script || null,
+      ttsSegments: params.ttsSegments || [],
       language: params.language || 'en-US',
       voice: params.voice || 'male-foundation',
       options: params.options || {}
@@ -104,6 +138,8 @@ async function getJob(jobId) {
           error: data.error,
           videoUrl: data.videoUrl,
           filename: data.filename,
+          ttsSegments: data.ttsSegments || [],
+          isMerged: !!data.isMerged,
           metrics: data.metrics,
           created_at: convertTimestamp(data.created_at),
           started_at: convertTimestamp(data.started_at),
@@ -125,6 +161,8 @@ async function getJob(jobId) {
     error: job.error,
     videoUrl: job.videoUrl,
     filename: job.filename,
+    ttsSegments: job.ttsSegments || [],
+    isMerged: !!job.isMerged,
     metrics: job.metrics,
     created_at: job.created_at,
     started_at: job.started_at,
@@ -175,7 +213,7 @@ async function processQueue() {
   job.started_at = startedAt;
 
   const startTime = Date.now();
-  let audioPath = null;
+  let audioSegments = [];
   let tempVideoPath = null;
   
   const metrics = {
@@ -189,25 +227,72 @@ async function processQueue() {
   try {
     let finalDuration = job.params.duration;
 
-    // Step 1: TTS Generation (if script is provided)
-    if (job.params.script) {
-      logger.info(`Job ${jobId} [Step 1/3]: Generating TTS Voice-Over...`);
-      const ttsStart = Date.now();
-      
-      const audioFilename = `tts-${uuidv4()}.mp3`;
-      audioPath = await ttsService.generateAndDownloadSpeech(
-        job.params.script, 
-        job.params.language, 
-        job.params.voice,
-        audioFilename
-      );
-      
-      metrics.tts_duration = parseFloat(((Date.now() - ttsStart) / 1000).toFixed(2));
-      logger.info(`Job ${jobId}: TTS generated in ${metrics.tts_duration}s. File: ${audioPath}`);
+    // Step 1: TTS Generation (either segments list or single script)
+    const hasSegments = job.params.ttsSegments && job.params.ttsSegments.length > 0;
+    const hasScript = !!job.params.script;
 
-      // Measure audio duration using ffprobe
-      const audioDuration = await mergeService.getVideoDuration(audioPath);
-      logger.info(`Job ${jobId}: Measured audio duration: ${audioDuration.toFixed(2)}s`);
+    if (hasSegments || hasScript) {
+      logger.info(`Job ${jobId} [Step 1/3]: Generating TTS Voice-Over segments...`);
+      const ttsStart = Date.now();
+
+      if (hasSegments) {
+        for (let i = 0; i < job.params.ttsSegments.length; i++) {
+          const seg = job.params.ttsSegments[i];
+          const text = seg.TexttoTTS;
+          const startTimeOffset = parseTimestamp(seg.timespamptStart);
+          
+          const audioFilename = `tts-${uuidv4()}-seg-${i}.mp3`;
+          const audioPath = await ttsService.generateAndDownloadSpeech(
+            text, 
+            job.params.language, 
+            job.params.voice,
+            audioFilename
+          );
+          
+          audioSegments.push({
+            audioPath,
+            startTime: startTimeOffset,
+            TexttoTTS: text,
+            timespamptStart: seg.timespamptStart,
+            filename: audioFilename,
+            audioUrl: null
+          });
+        }
+      } else {
+        // Fallback to legacy single script
+        const audioFilename = `tts-${uuidv4()}.mp3`;
+        const audioPath = await ttsService.generateAndDownloadSpeech(
+          job.params.script, 
+          job.params.language, 
+          job.params.voice,
+          audioFilename
+        );
+        
+        audioSegments.push({
+          audioPath,
+          startTime: 0,
+          TexttoTTS: job.params.script,
+          timespamptStart: "00:00:00",
+          filename: audioFilename,
+          audioUrl: null
+        });
+      }
+
+      metrics.tts_duration = parseFloat(((Date.now() - ttsStart) / 1000).toFixed(2));
+      logger.info(`Job ${jobId}: TTS segments generated in ${metrics.tts_duration}s. Count: ${audioSegments.length}`);
+
+      // Upload audio segments to R2 if editMode is true
+      if (job.params.options.editMode && r2.s3Client) {
+        for (const seg of audioSegments) {
+          try {
+            logger.info(`Job ${jobId}: Uploading segment to R2: ${seg.audioPath}`);
+            const r2Url = await r2.uploadFile(seg.audioPath, seg.filename);
+            seg.audioUrl = r2Url;
+          } catch (uploadErr) {
+            logger.error(`Job ${jobId}: R2 upload of segment failed: ${uploadErr.message}`);
+          }
+        }
+      }
     }
 
     // Step 2: Capture Website as Video
@@ -225,22 +310,69 @@ async function processQueue() {
     metrics.capture_duration = parseFloat(((Date.now() - captureStart) / 1000).toFixed(2));
     logger.info(`Job ${jobId}: Website capture completed in ${metrics.capture_duration}s. File: ${tempVideoPath}`);
 
-    // Step 3: Merge video and audio (if audio exists)
-    if (audioPath) {
-      logger.info(`Job ${jobId} [Step 3/3]: Merging video and audio tracks...`);
+    // Step 3: Handle Merge or EditMode separation
+    let videoUrl = `/videos/${path.basename(tempVideoPath)}`;
+    let filename = path.basename(tempVideoPath);
+
+    if (job.params.options.editMode) {
+      logger.info(`Job ${jobId} [Step 3/3]: EditMode is enabled. Skipping immediate audio merge.`);
+      
+      // Upload silent video to R2
+      if (r2.s3Client) {
+        try {
+          logger.info(`Job ${jobId}: Uploading raw silent video to Cloudflare R2...`);
+          const r2Url = await r2.uploadFile(tempVideoPath, filename);
+          videoUrl = r2Url;
+          
+          if (fs.existsSync(tempVideoPath)) {
+            fs.unlinkSync(tempVideoPath);
+            logger.info(`Job ${jobId}: Deleted local raw silent video after uploading to R2`);
+          }
+        } catch (uploadErr) {
+          logger.error(`Job ${jobId}: R2 upload of raw video failed: ${uploadErr.message}`);
+        }
+      }
+
+      // Save segment list with public URLs to the job state
+      job.ttsSegments = audioSegments.map(seg => ({
+        timespamptStart: seg.timespamptStart,
+        TexttoTTS: seg.TexttoTTS,
+        filename: seg.filename,
+        audioUrl: seg.audioUrl || `/audio/${seg.filename}`
+      }));
+      job.videoUrl = videoUrl;
+      job.filename = filename;
+
+      // Clean up local segment audio files since they are saved/uploaded
+      for (const seg of audioSegments) {
+        try {
+          if (fs.existsSync(seg.audioPath)) {
+            fs.unlinkSync(seg.audioPath);
+          }
+        } catch (cleanupErr) {
+          logger.warn(`Job ${jobId}: Failed to cleanup segment audio file: ${cleanupErr.message}`);
+        }
+      }
+
+    } else if (audioSegments.length > 0) {
+      logger.info(`Job ${jobId} [Step 3/3]: Merging video and audio segments...`);
       const mergeStart = Date.now();
 
       const mergedFilename = `capture-${uuidv4()}.mp4`;
       const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
       const mergedPath = path.join(__dirname, '..', outputDir, mergedFilename);
 
-      const finalVideoPath = await mergeService.mergeVideoAudio(tempVideoPath, audioPath, mergedPath);
+      const finalVideoPath = await mergeService.mergeVideoWithAudioSegments(
+        tempVideoPath, 
+        audioSegments, 
+        mergedPath
+      );
       metrics.merge_duration = parseFloat(((Date.now() - mergeStart) / 1000).toFixed(2));
       logger.info(`Job ${jobId}: Merge completed in ${metrics.merge_duration}s. File: ${finalVideoPath}`);
 
-      // Upload to R2 and get public URL
-      let videoUrl = `/videos/${mergedFilename}`;
-      let filename = mergedFilename;
+      // Upload merged video to R2 and get public URL
+      videoUrl = `/videos/${mergedFilename}`;
+      filename = mergedFilename;
       
       if (r2.s3Client) {
         try {
@@ -248,7 +380,6 @@ async function processQueue() {
           const r2Url = await r2.uploadFile(finalVideoPath, mergedFilename);
           videoUrl = r2Url;
           
-          // Delete the merged file from local storage to save space
           if (fs.existsSync(finalVideoPath)) {
             fs.unlinkSync(finalVideoPath);
             logger.info(`Job ${jobId}: Deleted local merged video file after uploading to R2`);
@@ -265,24 +396,21 @@ async function processQueue() {
       // Clean up temp files
       try {
         if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
-        if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+        for (const seg of audioSegments) {
+          if (fs.existsSync(seg.audioPath)) fs.unlinkSync(seg.audioPath);
+        }
         logger.info(`Job ${jobId}: Cleaned up temporary video and audio tracks`);
       } catch (cleanupErr) {
         logger.warn(`Job ${jobId}: Failed to cleanup temporary files: ${cleanupErr.message}`);
       }
     } else {
       // No TTS: direct public URL of captured video
-      const finalFilename = path.basename(tempVideoPath);
-      let videoUrl = `/videos/${finalFilename}`;
-      let filename = finalFilename;
-
       if (r2.s3Client) {
         try {
           logger.info(`Job ${jobId}: Uploading captured video to Cloudflare R2...`);
-          const r2Url = await r2.uploadFile(tempVideoPath, finalFilename);
+          const r2Url = await r2.uploadFile(tempVideoPath, filename);
           videoUrl = r2Url;
 
-          // Delete local capture file
           if (fs.existsSync(tempVideoPath)) {
             fs.unlinkSync(tempVideoPath);
             logger.info(`Job ${jobId}: Deleted local captured video file after uploading to R2`);
@@ -316,6 +444,7 @@ async function processQueue() {
       status: 'completed',
       videoUrl: job.videoUrl,
       filename: job.filename,
+      ttsSegments: job.ttsSegments || [],
       metrics: metrics,
       completed_at: job.completed_at
     });
@@ -338,8 +467,10 @@ async function processQueue() {
 
     // Clean up any remaining temp files on failure
     try {
-      if (audioPath && fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
       if (tempVideoPath && fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+      for (const seg of audioSegments) {
+        if (seg.audioPath && fs.existsSync(seg.audioPath)) fs.unlinkSync(seg.audioPath);
+      }
     } catch (cleanupErr) {
       logger.warn(`Job ${jobId}: Failed to cleanup temp files on error: ${cleanupErr.message}`);
     }
@@ -350,7 +481,121 @@ async function processQueue() {
   }
 }
 
+/**
+ * Perform the final fast merge for a decoupled edit-mode job
+ * @param {string} jobId - The original job ID
+ * @param {Array<Object>} ttsSegments - Array of { filename, timespamptStart }
+ * @returns {Promise<Object>} - The updated job info
+ */
+async function mergeJob(jobId, ttsSegments) {
+  let job = jobs.get(jobId);
+  if (!job && db) {
+    const doc = await db.collection('jobs').doc(jobId).get();
+    if (doc.exists) {
+      job = doc.data();
+    }
+  }
+
+  if (!job) {
+    throw new Error(`Job not found: ${jobId}`);
+  }
+
+  // Ensure directories exist
+  const outputDir = process.env.VIDEO_OUTPUT_DIR || './videos';
+  const audioDir = process.env.AUDIO_OUTPUT_DIR || './audio';
+  const absoluteOutputDir = path.join(__dirname, '..', outputDir);
+  const absoluteAudioDir = path.join(__dirname, '..', audioDir);
+
+  if (!fs.existsSync(absoluteOutputDir)) fs.mkdirSync(absoluteOutputDir, { recursive: true });
+  if (!fs.existsSync(absoluteAudioDir)) fs.mkdirSync(absoluteAudioDir, { recursive: true });
+
+  // 1. Resolve source video path (either local or download from R2)
+  const videoFilename = job.filename || `capture-${jobId}.mp4`;
+  const localVideoPath = path.join(absoluteOutputDir, videoFilename);
+  
+  logger.info(`Merging job ${jobId}. Resolving video: ${localVideoPath}`);
+  await ensureLocalFile(job.videoUrl, localVideoPath);
+
+  // 2. Resolve each audio segment
+  const audioSegments = [];
+  for (let i = 0; i < ttsSegments.length; i++) {
+    const seg = ttsSegments[i];
+    const localAudioPath = path.join(absoluteAudioDir, seg.filename);
+    
+    // Find matching segment URL from original job to download if missing
+    const origSeg = job.ttsSegments && job.ttsSegments.find(s => s.filename === seg.filename);
+    const audioUrl = origSeg ? origSeg.audioUrl : `${r2.getPublicUrl()}/${seg.filename}`;
+
+    logger.info(`Resolving segment ${i} (${seg.filename}): ${localAudioPath}`);
+    await ensureLocalFile(audioUrl, localAudioPath);
+
+    audioSegments.push({
+      audioPath: localAudioPath,
+      startTime: parseTimestamp(seg.timespamptStart)
+    });
+  }
+
+  // 3. Perform FFmpeg merge
+  const mergedFilename = `merged-${uuidv4()}.mp4`;
+  const mergedPath = path.join(absoluteOutputDir, mergedFilename);
+
+  logger.info(`Starting FFmpeg merge for ${jobId} -> ${mergedPath}`);
+  const finalVideoPath = await mergeService.mergeVideoWithAudioSegments(
+    localVideoPath, 
+    audioSegments, 
+    mergedPath
+  );
+
+  // 4. Upload merged output to R2
+  let videoUrl = `/videos/${mergedFilename}`;
+  let filename = mergedFilename;
+
+  if (r2.s3Client) {
+    logger.info(`Uploading finalized merged video to R2...`);
+    const r2Url = await r2.uploadFile(finalVideoPath, mergedFilename);
+    videoUrl = r2Url;
+    if (fs.existsSync(finalVideoPath)) {
+      fs.unlinkSync(finalVideoPath);
+    }
+  }
+
+  // 5. Clean up local downloaded video/audio copies to save space
+  if (fs.existsSync(localVideoPath)) {
+    fs.unlinkSync(localVideoPath);
+  }
+  for (const seg of audioSegments) {
+    if (fs.existsSync(seg.audioPath)) {
+      fs.unlinkSync(seg.audioPath);
+    }
+  }
+
+  // 6. Update local and Firestore job state
+  const updates = {
+    status: 'completed',
+    videoUrl: videoUrl,
+    filename: filename,
+    completed_at: new Date(),
+    isMerged: true
+  };
+
+  if (jobs.has(jobId)) {
+    Object.assign(jobs.get(jobId), updates);
+  }
+
+  if (db) {
+    await db.collection('jobs').doc(jobId).update(updates);
+  }
+
+  return {
+    jobId,
+    status: 'completed',
+    videoUrl,
+    filename
+  };
+}
+
 module.exports = {
   createJob,
-  getJob
+  getJob,
+  mergeJob
 };
