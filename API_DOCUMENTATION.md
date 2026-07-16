@@ -318,6 +318,81 @@ curl -L https://web-scrapper-recorder-api.jollygrass-a22ba7ee.northeurope.azurec
 
 ---
 
+## 6. Frontend Timeline Editor Guide (HTML/JS Integration)
+
+When you receive the completed job status payload containing the generated tracks, your client application should render an editing interface to align audio segments onto the video timeline.
+
+### A. Rendering the Timeline UI Rows
+Iterate over the returned `ttsSegments` array to construct input rows:
+
+```javascript
+function renderTimelineEditor(job) {
+  const container = document.getElementById('timeline-container');
+  
+  // 1. Load the silent raw video in the main preview player
+  loadVideoPlayer(job.videoUrl);
+  
+  // 2. Render each segment with its specific input and a preview audio button
+  container.innerHTML = job.ttsSegments.map((seg, i) => `
+    <div class="timeline-row">
+      <span class="badge">Segment ${i + 1}</span>
+      
+      <!-- Timing start input -->
+      <label>Start: 
+        <input type="text" class="timeline-start" data-filename="${seg.filename}" value="${seg.timespamptStart}" />
+      </label>
+      
+      <!-- Text label -->
+      <span class="segment-text" title="${seg.TexttoTTS}">"${seg.TexttoTTS}"</span>
+      
+      <!-- Audio Preview Button -->
+      <button onclick="playAudio('${seg.audioUrl}')">🔊 Preview Audio</button>
+    </div>
+  `).join('');
+}
+
+function playAudio(url) {
+  const audio = new Audio(url);
+  audio.play();
+}
+```
+
+### B. Finalizing the Merge
+When the user clicks the "Finalize & Mix" button, query all timeline inputs to construct the payload for `/api/capture/merge`:
+
+```javascript
+async function finalizeDecoupledVideo(jobId) {
+  const inputs = document.querySelectorAll('.timeline-start');
+  const ttsSegments = Array.from(inputs).map(input => ({
+    filename: input.dataset.filename,
+    timespamptStart: input.value.trim()
+  }));
+
+  try {
+    const response = await fetch('/api/capture/merge', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ jobId, ttsSegments })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      // Step completed! Load the final merged video in your player
+      loadVideoPlayer(result.data.videoUrl);
+      console.log('Final Merged Video URL:', result.data.videoUrl);
+    } else {
+      alert('Merge failed: ' + result.error);
+    }
+  } catch (err) {
+    console.error('Network error finalising merge:', err);
+  }
+}
+```
+
+---
+
 ## Typical Flow for Frontend Integration
 
 ### A. Direct Rendering Flow (Simple)
