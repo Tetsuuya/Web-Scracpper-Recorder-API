@@ -36,21 +36,53 @@ async function mergeVideoAudio(videoPath, audioPath, outputPath, options = {}) {
   console.log(`   Audio: ${audioPath}`);
   console.log(`   Output: ${outputPath}`);
 
+  // Retrieve durations of both input files
+  const videoDuration = await getVideoDuration(videoPath);
+  const audioDuration = await getVideoDuration(audioPath);
+  console.log(`   Durations - Video: ${videoDuration.toFixed(2)}s, Audio: ${audioDuration.toFixed(2)}s`);
+
   return new Promise((resolve, reject) => {
-    // FFmpeg command to replace audio track with new audio
     const ffmpegArgs = [
       '-i', videoPath,
-      '-i', audioPath,
-      '-c:v', 'copy',
-      '-c:a', 'aac',
-      '-map', '0:v:0',
-      '-map', '1:a:0',
-      '-shortest',
-      ...(options.fadeIn ? ['-af', `afade=t=in:st=0:d=${options.fadeIn}`] : []),
-      ...(options.fadeOut ? ['-af', `afade=t=out:st=${options.duration - options.fadeOut}:d=${options.fadeOut}`] : []),
-      '-y', // Overwrite output
-      outputPath
+      '-i', audioPath
     ];
+
+    if (audioDuration > videoDuration) {
+      const freezeDuration = audioDuration - videoDuration;
+      console.log(`🥶 Audio is longer. Freezing last frame of video for ${freezeDuration.toFixed(2)}s`);
+      
+      ffmpegArgs.push(
+        '-filter_complex', `[0:v]tpad=stop_mode=clone:stop_duration=${freezeDuration}[v]`,
+        '-map', '[v]',
+        '-map', '1:a:0',
+        '-c:v', 'libx264', // Must re-encode to apply filter
+        '-c:a', 'aac'
+      );
+    } else {
+      console.log(`▶️ Video is longer or equal. Keeping full video duration: ${videoDuration.toFixed(2)}s`);
+      
+      ffmpegArgs.push(
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-c:v', 'copy', // Stream copy (fast, no re-encode)
+        '-c:a', 'aac'
+      );
+    }
+
+    // Apply audio fade effects if options are specified
+    const audioFilters = [];
+    const finalDuration = Math.max(videoDuration, audioDuration);
+    if (options.fadeIn) {
+      audioFilters.push(`afade=t=in:st=0:d=${options.fadeIn}`);
+    }
+    if (options.fadeOut) {
+      audioFilters.push(`afade=t=out:st=${finalDuration - options.fadeOut}:d=${options.fadeOut}`);
+    }
+    if (audioFilters.length > 0) {
+      ffmpegArgs.push('-af', audioFilters.join(','));
+    }
+
+    ffmpegArgs.push('-y', outputPath);
 
     console.log(`🔧 FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`);
 

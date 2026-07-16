@@ -208,13 +208,6 @@ async function processQueue() {
       // Measure audio duration using ffprobe
       const audioDuration = await mergeService.getVideoDuration(audioPath);
       logger.info(`Job ${jobId}: Measured audio duration: ${audioDuration.toFixed(2)}s`);
-
-      // If audio is longer than requested duration, dynamically extend video capture length
-      if (audioDuration > finalDuration) {
-        const originalDuration = finalDuration;
-        finalDuration = Math.ceil(audioDuration);
-        logger.info(`Job ${jobId}: Adjusting capture duration from ${originalDuration}s to ${finalDuration}s to fit voice-over`);
-      }
     }
 
     // Step 2: Capture Website as Video
